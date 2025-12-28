@@ -738,6 +738,50 @@ export default function App() {
   const [highestBid, setHighestBid] = useState(0); // 最高叫分
   const [bidder, setBidder] = useState(-1); // 当前叫分者
   const [bids, setBids] = useState([0, 0, 0]); // 每个玩家的叫分 [玩家, 电脑1, 电脑2]
+
+  // 头像组件
+  const PlayerAvatar = ({ playerIndex, size = 40, showLabel = false }) => {
+    let backgroundColor, label;
+
+    switch(playerIndex) {
+      case 0: // 玩家
+        backgroundColor = '#4CAF50'; // 绿色
+        label = '您';
+        break;
+      case 1: // 电脑1
+        backgroundColor = '#2196F3'; // 蓝色
+        label = '1';
+        break;
+      case 2: // 电脑2
+        backgroundColor = '#FF9800'; // 橙色
+        label = '2';
+        break;
+      default:
+        backgroundColor = '#9E9E9E'; // 灰色
+        label = '?';
+    }
+
+    return (
+      <View style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor,
+          justifyContent: 'center',
+          alignItems: 'center',
+          borderWidth: 2,
+          borderColor: '#fff',
+          marginRight: 8
+        }
+      ]}>
+        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: size * 0.4 }}>
+          {label}
+        </Text>
+      </View>
+    );
+  };
+
   const [gamePhase, setGamePhase] = useState('bidding'); // bidding, playing
 
   // 初始化游戏
@@ -1567,7 +1611,7 @@ export default function App() {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>游戏玩法</Text>
               <ScrollView style={styles.rulesContainer}>
-                <Text style={styles.ruleText}>• 游戏人数：3人（您和2个电脑玩家）</Text>
+                <Text style={styles.ruleText}>• 游戏人数：3人（您和2个电脑对手）</Text>
                 <Text style={styles.ruleText}>• 牌数：每人17张，底牌3张</Text>
                 <Text style={styles.ruleText}>• 叫地主：依次叫1分、2分、3分或不叫</Text>
                 <Text style={styles.ruleText}>• 地主：叫分最高的玩家获得底牌，先出牌</Text>
@@ -1672,24 +1716,43 @@ export default function App() {
         
         <View style={styles.playersRow}>
           <View style={styles.topPlayerSmall}>
-            <Text style={styles.playerName}>电脑玩家 1</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <PlayerAvatar playerIndex={1} size={30} />
+              <Text style={styles.playerName}>电脑1</Text>
+            </View>
             <Text style={styles.cardCount}>叫分: {bids[1] === 0 ? '不叫' : bids[1] + '分'}</Text>
           </View>
           <View style={styles.topPlayerSmall}>
-            <Text style={styles.playerName}>电脑玩家 2</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <PlayerAvatar playerIndex={2} size={30} />
+              <Text style={styles.playerName}>电脑2</Text>
+            </View>
             <Text style={styles.cardCount}>叫分: {bids[2] === 0 ? '不叫' : bids[2] + '分'}</Text>
           </View>
         </View>
         
         <View style={styles.centerArea}>
-          <Text style={styles.biddingText}>当前叫分者: {bidder === 0 ? '您' : `电脑${bidder}`}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+            <Text style={styles.biddingText}>当前叫分者: </Text>
+            <PlayerAvatar playerIndex={bidder} size={25} />
+          </View>
           <Text style={styles.biddingText}>最高分: {highestBid}分</Text>
-          <Text style={styles.biddingText}>地主: {landlord === -1 ? '未确定' : (landlord === 0 ? '您' : `电脑${landlord}`)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+            <Text style={styles.biddingText}>地主: </Text>
+            {landlord === -1 ? (
+              <Text style={styles.biddingText}>未确定</Text>
+            ) : (
+              <PlayerAvatar playerIndex={landlord} size={25} />
+            )}
+          </View>
         </View>
         
         
         <View style={styles.bottomPlayer}>
-          <Text style={styles.playerName}>您的牌 (17张)</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <PlayerAvatar playerIndex={0} size={30} />
+            <Text style={styles.playerName}> (17张)</Text>
+          </View>
           {/* 顺序切换按钮 */}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 }}>
             <TouchableOpacity onPress={() => setCardOrder(prev => prev === 'asc' ? 'desc' : 'asc')} style={{ padding: 6 }}>
@@ -1845,18 +1908,30 @@ export default function App() {
       
       {/* 顶部信息栏 */}
       <View style={styles.infoBar}>
-        <Text style={styles.infoText}>当前玩家: {currentPlayer === 0 ? '您' : `电脑${currentPlayer}`}</Text>
-        <Text style={styles.infoText}>地主: {landlord === 0 ? '您' : `电脑${landlord}`}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={styles.infoText}>当前: </Text>
+          <PlayerAvatar playerIndex={currentPlayer} size={25} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={styles.infoText}>地主: </Text>
+          <PlayerAvatar playerIndex={landlord} size={25} />
+        </View>
       </View>
       
       {/* 顶部两个电脑玩家一行显示 */}
       <View style={styles.playersRow}>
         <View style={styles.topPlayerSmall}>
-          <Text style={styles.playerName}>电脑玩家 1</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <PlayerAvatar playerIndex={1} size={30} />
+            <Text style={styles.playerName}>电脑1</Text>
+          </View>
           <Text style={styles.cardCount}>{computer1Hand.length} 张牌</Text>
         </View>
         <View style={styles.topPlayerSmall}>
-          <Text style={styles.playerName}>电脑玩家 2</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <PlayerAvatar playerIndex={2} size={30} />
+            <Text style={styles.playerName}>电脑2</Text>
+          </View>
           <Text style={styles.cardCount}>{computer2Hand.length} 张牌</Text>
         </View>
       </View>
@@ -1880,7 +1955,10 @@ export default function App() {
                 </View>
               ))}
             </View>
-            <Text style={styles.lastPlayerText}>来自: {lastPlayer === 0 ? '您' : `电脑${lastPlayer}`}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <PlayerAvatar playerIndex={lastPlayer} size={20} />
+              <Text style={styles.lastPlayerText}>出牌</Text>
+            </View>
           </View>
         ) : (
           <Text style={styles.waitingText}>等待出牌...</Text>
@@ -1890,7 +1968,10 @@ export default function App() {
       
       {/* 玩家手牌区域 */}
       <View style={styles.bottomPlayer}>
-        <Text style={styles.playerName}>您的牌 ({playerHand.length})</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <PlayerAvatar playerIndex={0} size={30} />
+          <Text style={styles.playerName}> ({playerHand.length})</Text>
+        </View>
         {/* 顺序切换按钮 */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 }}>
           <TouchableOpacity onPress={() => setCardOrder(prev => prev === 'asc' ? 'desc' : 'asc')} style={{ padding: 6 }}>
