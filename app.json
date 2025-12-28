@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "老人斗地主",
+    "slug": "laoren-doudizhu",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0a6e20"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourname.laorendoudizhu"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a6e20"
+      },
+      "package": "com.yourname.laorendoudizhu"
+    },
+    "web": {
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id-here"
+      }
+    }
+  }
+}
