@@ -281,6 +281,397 @@ const getCardType = (cards) => {
   return { type: 'invalid', valid: false };
 };
 
+// 生成所有可能的出牌选项
+const generatePossiblePlays = (hand, lastPlayedCards) => {
+  const possiblePlays = [];
+
+  if (lastPlayedCards.length === 0) {
+    // 自由出牌：生成所有可能的牌型
+    // 单张
+    for (let i = 0; i < hand.length; i++) {
+      possiblePlays.push([i]);
+    }
+
+    // 对子
+    for (let i = 0; i < hand.length; i++) {
+      for (let j = i + 1; j < hand.length; j++) {
+        if (hand[i].value === hand[j].value && hand[i].type !== 'joker') {
+          possiblePlays.push([i, j]);
+        }
+      }
+    }
+
+    // 三张
+    for (let i = 0; i < hand.length; i++) {
+      for (let j = i + 1; j < hand.length; j++) {
+        for (let k = j + 1; k < hand.length; k++) {
+          if (hand[i].value === hand[j].value && hand[j].value === hand[k].value) {
+            possiblePlays.push([i, j, k]);
+          }
+        }
+      }
+    }
+
+    // 三带一
+    for (let i = 0; i < hand.length; i++) {
+      for (let j = i + 1; j < hand.length; j++) {
+        for (let k = j + 1; k < hand.length; k++) {
+          if (hand[i].value === hand[j].value && hand[j].value === hand[k].value) {
+            // 找到一个三张，然后找一个单张
+            for (let l = 0; l < hand.length; l++) {
+              if (l !== i && l !== j && l !== k) {
+                possiblePlays.push([i, j, k, l]);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 三带二
+    for (let i = 0; i < hand.length; i++) {
+      for (let j = i + 1; j < hand.length; j++) {
+        for (let k = j + 1; k < hand.length; k++) {
+          if (hand[i].value === hand[j].value && hand[j].value === hand[k].value) {
+            // 找到一个三张，然后找一个对子
+            for (let l = 0; l < hand.length; l++) {
+              for (let m = l + 1; m < hand.length; m++) {
+                if (l !== i && l !== j && l !== k &&
+                    m !== i && m !== j && m !== k &&
+                    hand[l].value === hand[m].value && hand[l].type !== 'joker') {
+                  possiblePlays.push([i, j, k, l, m]);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 王炸
+    let smallJokerIndex = -1;
+    let bigJokerIndex = -1;
+    for (let i = 0; i < hand.length; i++) {
+      if (hand[i].id === 'small_joker') smallJokerIndex = i;
+      if (hand[i].id === 'big_joker') bigJokerIndex = i;
+    }
+    if (smallJokerIndex !== -1 && bigJokerIndex !== -1) {
+      possiblePlays.push([smallJokerIndex, bigJokerIndex]);
+    }
+
+    // 普通炸弹
+    for (let i = 0; i < hand.length; i++) {
+      for (let j = i + 1; j < hand.length; j++) {
+        for (let k = j + 1; k < hand.length; k++) {
+          for (let l = k + 1; l < hand.length; l++) {
+            if (hand[i].value === hand[j].value &&
+                hand[j].value === hand[k].value &&
+                hand[k].value === hand[l].value) {
+              possiblePlays.push([i, j, k, l]);
+            }
+          }
+        }
+      }
+    }
+
+    // 顺子
+    for (let length = 5; length <= hand.length; length++) {
+      for (let start = 0; start <= hand.length - length; start++) {
+        // 尝试所有可能的组合
+        const combinations = getCombinations(hand, length, start);
+        for (const combo of combinations) {
+          const cards = combo.map(i => hand[i]);
+          if (getCardType(cards).type === 'straight') {
+            possiblePlays.push(combo);
+          }
+        }
+      }
+    }
+
+    // 连对
+    for (let length = 6; length <= hand.length && length % 2 === 0; length += 2) {
+      for (let start = 0; start <= hand.length - length; start++) {
+        const combinations = getCombinations(hand, length, start);
+        for (const combo of combinations) {
+          const cards = combo.map(i => hand[i]);
+          if (getCardType(cards).type === 'chain_pairs') {
+            possiblePlays.push(combo);
+          }
+        }
+      }
+    }
+
+    // 飞机
+    for (let length = 6; length <= hand.length; length += 3) {
+      for (let start = 0; start <= hand.length - length; start++) {
+        const combinations = getCombinations(hand, length, start);
+        for (const combo of combinations) {
+          const cards = combo.map(i => hand[i]);
+          const cardType = getCardType(cards);
+          if (cardType.type === 'plane' || cardType.type === 'plane_with_single' || cardType.type === 'plane_with_pair') {
+            possiblePlays.push(combo);
+          }
+        }
+      }
+    }
+
+    // 四带二
+    for (let i = 0; i < hand.length; i++) {
+      for (let j = i + 1; j < hand.length; j++) {
+        for (let k = j + 1; k < hand.length; k++) {
+          for (let l = k + 1; l < hand.length; l++) {
+            if (hand[i].value === hand[j].value &&
+                hand[j].value === hand[k].value &&
+                hand[k].value === hand[l].value) {
+              // 找到一个四张，然后找两个单张或一个对子
+              // 找两个单张
+              for (let m = 0; m < hand.length; m++) {
+                for (let n = m + 1; n < hand.length; n++) {
+                  if (m !== i && m !== j && m !== k && m !== l &&
+                      n !== i && n !== j && n !== k && n !== l) {
+                    possiblePlays.push([i, j, k, l, m, n]);
+                  }
+                }
+              }
+              // 找一个对子
+              for (let m = 0; m < hand.length; m++) {
+                for (let n = m + 1; n < hand.length; n++) {
+                  if (m !== i && m !== j && m !== k && m !== l &&
+                      n !== i && n !== j && n !== k && n !== l &&
+                      hand[m].value === hand[n].value && hand[m].type !== 'joker') {
+                    possiblePlays.push([i, j, k, l, m, n]);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } else {
+    // 接牌：生成能压过上一手牌的牌型
+    const lastType = getCardType(lastPlayedCards);
+
+    if (lastType.type === 'single') {
+      // 单张：找更大的单张
+      for (let i = 0; i < hand.length; i++) {
+        const cardToTry = [hand[i]];
+        if (canBeat(cardToTry, lastPlayedCards)) {
+          possiblePlays.push([i]);
+        }
+      }
+    } else if (lastType.type === 'pair') {
+      // 对子：找更大的对子
+      for (let i = 0; i < hand.length; i++) {
+        for (let j = i + 1; j < hand.length; j++) {
+          if (hand[i].value === hand[j].value && hand[i].type !== 'joker') {
+            const pair = [hand[i], hand[j]];
+            if (canBeat(pair, lastPlayedCards)) {
+              possiblePlays.push([i, j]);
+            }
+          }
+        }
+      }
+    } else if (lastType.type === 'triple') {
+      // 三张：找更大的三张
+      for (let i = 0; i < hand.length; i++) {
+        for (let j = i + 1; j < hand.length; j++) {
+          for (let k = j + 1; k < hand.length; k++) {
+            if (hand[i].value === hand[j].value && hand[j].value === hand[k].value) {
+              const triple = [hand[i], hand[j], hand[k]];
+              if (canBeat(triple, lastPlayedCards)) {
+                possiblePlays.push([i, j, k]);
+              }
+            }
+          }
+        }
+      }
+    } else if (lastType.type === 'triple_with_single') {
+      // 三带一：找更大的三带一
+      for (let i = 0; i < hand.length; i++) {
+        for (let j = i + 1; j < hand.length; j++) {
+          for (let k = j + 1; k < hand.length; k++) {
+            if (hand[i].value === hand[j].value && hand[j].value === hand[k].value) {
+              for (let l = 0; l < hand.length; l++) {
+                if (l !== i && l !== j && l !== k) {
+                  const tripleWithSingle = [hand[i], hand[j], hand[k], hand[l]];
+                  if (canBeat(tripleWithSingle, lastPlayedCards)) {
+                    possiblePlays.push([i, j, k, l]);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } else if (lastType.type === 'triple_with_pair') {
+      // 三带二：找更大的三带二
+      for (let i = 0; i < hand.length; i++) {
+        for (let j = i + 1; j < hand.length; j++) {
+          for (let k = j + 1; k < hand.length; k++) {
+            if (hand[i].value === hand[j].value && hand[j].value === hand[k].value) {
+              for (let l = 0; l < hand.length; l++) {
+                for (let m = l + 1; m < hand.length; m++) {
+                  if (l !== i && l !== j && l !== k &&
+                      m !== i && m !== j && m !== k &&
+                      hand[l].value === hand[m].value && hand[l].type !== 'joker') {
+                    const tripleWithPair = [hand[i], hand[j], hand[k], hand[l], hand[m]];
+                    if (canBeat(tripleWithPair, lastPlayedCards)) {
+                      possiblePlays.push([i, j, k, l, m]);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } else if (lastType.type === 'straight') {
+      // 顺子：找同长度的更大顺子
+      for (let start = 0; start <= hand.length - lastPlayedCards.length; start++) {
+        const combinations = getCombinations(hand, lastPlayedCards.length, start);
+        for (const combo of combinations) {
+          const cards = combo.map(i => hand[i]);
+          if (getCardType(cards).type === 'straight' && canBeat(cards, lastPlayedCards)) {
+            possiblePlays.push(combo);
+          }
+        }
+      }
+    } else if (lastType.type === 'chain_pairs') {
+      // 连对：找同长度的更大连对
+      for (let start = 0; start <= hand.length - lastPlayedCards.length; start++) {
+        const combinations = getCombinations(hand, lastPlayedCards.length, start);
+        for (const combo of combinations) {
+          const cards = combo.map(i => hand[i]);
+          if (getCardType(cards).type === 'chain_pairs' && canBeat(cards, lastPlayedCards)) {
+            possiblePlays.push(combo);
+          }
+        }
+      }
+    } else if (lastType.type === 'plane' || lastType.type === 'plane_with_single' || lastType.type === 'plane_with_pair') {
+      // 飞机：找同类型同长度的更大飞机
+      for (let start = 0; start <= hand.length - lastPlayedCards.length; start++) {
+        const combinations = getCombinations(hand, lastPlayedCards.length, start);
+        for (const combo of combinations) {
+          const cards = combo.map(i => hand[i]);
+          const cardType = getCardType(cards);
+          if ((cardType.type === 'plane' || cardType.type === 'plane_with_single' || cardType.type === 'plane_with_pair') &&
+              canBeat(cards, lastPlayedCards)) {
+            possiblePlays.push(combo);
+          }
+        }
+      }
+    } else if (lastType.type === 'four_with_two') {
+      // 四带二：找更大的四带二
+      for (let i = 0; i < hand.length; i++) {
+        for (let j = i + 1; j < hand.length; j++) {
+          for (let k = j + 1; k < hand.length; k++) {
+            for (let l = k + 1; l < hand.length; l++) {
+              if (hand[i].value === hand[j].value &&
+                  hand[j].value === hand[k].value &&
+                  hand[k].value === hand[l].value) {
+                // 找两个单张
+                for (let m = 0; m < hand.length; m++) {
+                  for (let n = m + 1; n < hand.length; n++) {
+                    if (m !== i && m !== j && m !== k && m !== l &&
+                        n !== i && n !== j && n !== k && n !== l) {
+                      const fourWithTwo = [hand[i], hand[j], hand[k], hand[l], hand[m], hand[n]];
+                      if (canBeat(fourWithTwo, lastPlayedCards)) {
+                        possiblePlays.push([i, j, k, l, m, n]);
+                      }
+                    }
+                  }
+                }
+                // 找一个对子
+                for (let m = 0; m < hand.length; m++) {
+                  for (let n = m + 1; n < hand.length; n++) {
+                    if (m !== i && m !== j && m !== k && m !== l &&
+                        n !== i && n !== j && n !== k && n !== l &&
+                        hand[m].value === hand[n].value && hand[m].type !== 'joker') {
+                      const fourWithTwo = [hand[i], hand[j], hand[k], hand[l], hand[m], hand[n]];
+                      if (canBeat(fourWithTwo, lastPlayedCards)) {
+                        possiblePlays.push([i, j, k, l, m, n]);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 检查炸弹和王炸是否能压过上一手牌
+    // 普通炸弹
+    for (let i = 0; i < hand.length; i++) {
+      for (let j = i + 1; j < hand.length; j++) {
+        for (let k = j + 1; k < hand.length; k++) {
+          for (let l = k + 1; l < hand.length; l++) {
+            if (hand[i].value === hand[j].value &&
+                hand[j].value === hand[k].value &&
+                hand[k].value === hand[l].value) {
+              const bomb = [hand[i], hand[j], hand[k], hand[l]];
+              if (canBeat(bomb, lastPlayedCards)) {
+                possiblePlays.push([i, j, k, l]);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 王炸
+    let smallJokerIndex = -1;
+    let bigJokerIndex = -1;
+    for (let i = 0; i < hand.length; i++) {
+      if (hand[i].id === 'small_joker') smallJokerIndex = i;
+      if (hand[i].id === 'big_joker') bigJokerIndex = i;
+    }
+    if (smallJokerIndex !== -1 && bigJokerIndex !== -1) {
+      const kingBomb = [hand[smallJokerIndex], hand[bigJokerIndex]];
+      if (canBeat(kingBomb, lastPlayedCards)) {
+        possiblePlays.push([smallJokerIndex, bigJokerIndex]);
+      }
+    }
+  }
+
+  // 去重
+  const uniquePlays = [];
+  const seen = new Set();
+  for (const play of possiblePlays) {
+    const sortedPlay = [...play].sort((a, b) => a - b);
+    const key = sortedPlay.join(',');
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniquePlays.push(play);
+    }
+  }
+
+  return uniquePlays;
+};
+
+// 获取组合的辅助函数
+const getCombinations = (arr, length, start) => {
+  const result = [];
+
+  const combine = (start, depth, current) => {
+    if (depth === 0) {
+      result.push([...current]);
+      return;
+    }
+
+    for (let i = start; i < arr.length; i++) {
+      current.push(i);
+      combine(i + 1, depth - 1, current);
+      current.pop();
+    }
+  };
+
+  combine(start, length, []);
+  return result;
+};
+
 // 比较牌型大小
 const canBeat = (currentCards, lastCards) => {
   if (lastCards.length === 0) return true; // 没有上一手牌，任何牌都可以出
@@ -336,6 +727,8 @@ export default function App() {
   const [lastPlayer, setLastPlayer] = useState(-1); // 上一个出牌的玩家
   const [consecutivePasses, setConsecutivePasses] = useState(0); // 连续过牌计数，当达到2时允许最后出牌者任意出牌
   const [selectedCards, setSelectedCards] = useState([]);
+  const [hintIndex, setHintIndex] = useState(0); // 提示索引，用于循环显示所有可能的出牌选项
+  const [possiblePlays, setPossiblePlays] = useState([]); // 所有可能的出牌选项
   const [gameLog, setGameLog] = useState([]); // 游戏日志
   const [showSettings, setShowSettings] = useState(false); // 设置界面
   const [showGameLog, setShowGameLog] = useState(false); // 游戏记录界面
@@ -473,6 +866,10 @@ export default function App() {
       setGamePhase('bidding');
       setGameState('playing'); // 现在开始游戏，但处于叫地主阶段
     }
+
+    // 重置提示索引
+    setHintIndex(0);
+    setPossiblePlays([]);
   };
 
   // 开始新游戏
@@ -786,6 +1183,10 @@ export default function App() {
 
     const winMessage = `${result}\n基础分: ${base}\n炸弹: ${bombsCount} 次\n关住: ${locked} 人\n倍数: x${multiplier}\n最终得分: ${score}`;
     Alert.alert('游戏结束', winMessage, [{ text: '再来一局', onPress: startNewGame }]);
+
+    // 重置提示索引
+    setHintIndex(0);
+    setPossiblePlays([]);
   };
 
   // 出牌
@@ -843,6 +1244,10 @@ export default function App() {
     
     // 轮到下一个玩家
     setCurrentPlayer((currentPlayer + 1) % 3);
+
+    // 重置提示索引
+    setHintIndex(0);
+    setPossiblePlays([]);
   };
 
   // 不出（过牌）
@@ -867,6 +1272,10 @@ export default function App() {
         return next;
       }
     });
+
+    // 重置提示索引
+    setHintIndex(0);
+    setPossiblePlays([]);
   };
 
   // 提示功能
@@ -875,46 +1284,35 @@ export default function App() {
       Alert.alert('提示', '现在不是您的回合');
       return;
     }
-    
-    // 简单的提示逻辑：显示能压过上一手牌的最小牌
-    let hintCards = null;
-    
-    if (lastPlayedCards.length === 0) {
-      // 如果是第一手牌，提示出最小的牌
-      const sortedHand = [...playerHand].sort(compareCardValues);
-      hintCards = [sortedHand[0]];
-    } else {
-      // 尝试找到能压过上一手牌的最小牌
-      const lastType = getCardType(lastPlayedCards);
-      const sortedHand = [...playerHand].sort(compareCardValues);
-      
-      if (lastType.type === 'single') {
-        for (let i = 0; i < sortedHand.length; i++) {
-          const cardToTry = [sortedHand[i]];
-          if (canBeat(cardToTry, lastPlayedCards)) {
-            hintCards = cardToTry;
-            break;
-          }
-        }
-      }
+
+    // 检查是否需要重新生成可能的出牌选项
+    // 如果上一手牌变化了，或者玩家手牌变化了，或者可能的出牌选项为空，则重新生成
+    if (possiblePlays.length === 0) {
+      // 重新生成所有可能的出牌选项
+      const newPossiblePlays = generatePossiblePlays(playerHand, lastPlayedCards);
+      setPossiblePlays(newPossiblePlays);
+      setHintIndex(0); // 重置索引
     }
-    
-    if (hintCards) {
-      const hintIndices = [];
-      hintCards.forEach(hintCard => {
-        for (let i = 0; i < playerHand.length; i++) {
-          if (playerHand[i].id === hintCard.id && !hintIndices.includes(i)) {
-            hintIndices.push(i);
-            break;
-          }
-        }
-      });
-      
-      setSelectedCards(hintIndices);
-      Alert.alert('提示', '已为您选中可以出的牌');
-    } else {
-      Alert.alert('提示', '没有可以压过的牌');
+
+    if (possiblePlays.length === 0) {
+      Alert.alert('提示', '没有可以出的牌');
+      return;
     }
+
+    // 获取当前提示的出牌选项
+    const currentPlay = possiblePlays[hintIndex];
+    setSelectedCards(currentPlay);
+
+    // 更新提示索引，循环显示
+    const nextIndex = (hintIndex + 1) % possiblePlays.length;
+    setHintIndex(nextIndex);
+
+    // 显示提示信息
+    const cardNames = currentPlay.map(i => {
+      const card = playerHand[i];
+      return card.type === 'joker' ? card.realValue : card.value;
+    });
+    Alert.alert('提示', `第${hintIndex + 1}/${possiblePlays.length}种出牌方式: ${cardNames.join(', ')}`);
   };
 
   // 电脑玩家出牌
@@ -1074,7 +1472,7 @@ export default function App() {
 
             const cardNames = bestPlay.cards.map(c => c.type === 'joker' ? c.realValue : c.value);
             setGameLog(prev => [...prev, `电脑${computerIndex}出了: ${cardNames.join(', ')}`]);
-            
+
             // 检查电脑是否获胜
             if (newComputerHand.length === 0) {
               // 标记该电脑已出牌
@@ -1093,6 +1491,10 @@ export default function App() {
               finishGame(computerIndex);
               return;
             }
+
+            // 重置提示索引
+            setHintIndex(0);
+            setPossiblePlays([]);
           }
           } else {
           // 电脑过牌（未进入上面分支），也计入连续过牌
@@ -1102,17 +1504,27 @@ export default function App() {
               setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
               setLastPlayedCards([]);
               setCurrentPlayer(lastPlayer);
+              // 重置提示索引
+              setHintIndex(0);
+              setPossiblePlays([]);
               return 0;
             } else {
               setGameLog(g => [...g, `电脑${computerIndex}过牌`]);
+              // 重置提示索引
+              setHintIndex(0);
+              setPossiblePlays([]);
               return next;
             }
           });
           return; // 已处理轮转，避免外部重复设置 next player
         }
-        
+
         // 轮到下一个玩家
         setCurrentPlayer((currentPlayer + 1) % 3);
+
+        // 重置提示索引
+        setHintIndex(0);
+        setPossiblePlays([]);
       }, 2000); // 2秒后电脑出牌
 
       return () => clearTimeout(timer);
