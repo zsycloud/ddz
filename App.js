@@ -150,7 +150,7 @@ const getCardType = (cards) => {
     cards.forEach(card => {
       valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
     });
-    
+
     const counts = Object.values(valueCounts);
     if (counts.every(count => count === 2)) { // 所有牌都成对
       const uniqueValues = Object.keys(valueCounts);
@@ -158,32 +158,119 @@ const getCardType = (cards) => {
         const valuesOrder = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
         return valuesOrder.indexOf(a) - valuesOrder.indexOf(b);
       });
-      
+
       // 检查是否连续
       let isChain = true;
       for (let i = 1; i < sortedValues.length; i++) {
         const currentIndex = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'].indexOf(sortedValues[i]);
         const prevIndex = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'].indexOf(sortedValues[i-1]);
-        
+
         if (currentIndex !== prevIndex + 1 || sortedValues[i] === '2') {
           isChain = false;
           break;
         }
       }
-      
+
       if (isChain) {
         return { type: 'chain_pairs', valid: true, value: valuesOrder.indexOf(sortedValues[sortedValues.length-1]) };
       }
     }
   }
-  
+
+  // 飞机（至少两个连续的三张）以及飞机带翅膀（飞机带单牌/对子）检测
+  if (cards.length >= 6) {
+    const valueCounts = {};
+    cards.forEach(card => {
+      valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
+    });
+
+    // 连三（飞机）检测：至少两个连续的三张
+    // 支持：
+    // - 纯飞机（3*k 张）
+    // - 飞机带单（3*k + k 张，带 k 张单牌）
+    // - 飞机带对（3*k + 2*k 张，带 k 对牌）
+    // 规则：找到所有点数出现 >=3 的值（排除2与Joker），检查是否存在长度 >=2 的连续段
+    {
+      const tripleValues = Object.keys(valueCounts).filter(v => valueCounts[v] >= 3 && v !== '2' && v !== 'Joker');
+      if (tripleValues.length >= 2) {
+        const sortedTripleValues = tripleValues.sort((a, b) => valuesOrder.indexOf(a) - valuesOrder.indexOf(b));
+        // find consecutive runs
+        let run = [sortedTripleValues[0]];
+        const runs = [];
+        for (let i = 1; i < sortedTripleValues.length; i++) {
+          const prevIdx = valuesOrder.indexOf(sortedTripleValues[i-1]);
+          const curIdx = valuesOrder.indexOf(sortedTripleValues[i]);
+          if (curIdx === prevIdx + 1) {
+            run.push(sortedTripleValues[i]);
+          } else {
+            if (run.length >= 2) runs.push([...run]);
+            run = [sortedTripleValues[i]];
+          }
+        }
+        if (run.length >= 2) runs.push([...run]);
+
+        if (runs.length > 0) {
+          // try each run (长的优先)
+          runs.sort((a, b) => b.length - a.length);
+          for (const r of runs) {
+            const k = r.length; // number of triples in this plane
+            const triplesCardCount = 3 * k;
+            // collect cards that are part of triples (取每个三张)
+            const tripleCards = [];
+            const remaining = [];
+            const usedCounts = {};
+            cards.forEach(c => {
+              if (r.includes(c.value) && (usedCounts[c.value] || 0) < 3) {
+                tripleCards.push(c);
+                usedCounts[c.value] = (usedCounts[c.value] || 0) + 1;
+              } else {
+                remaining.push(c);
+              }
+            });
+
+            // 纯飞机
+            if (cards.length === triplesCardCount) {
+              const highest = r[r.length - 1];
+              return { type: 'plane', valid: true, count: k, value: valuesOrder.indexOf(highest) };
+            }
+
+            // 飞机带单：剩余 k 张单牌
+            if (cards.length === triplesCardCount + k) {
+              let ok = true;
+              remaining.forEach(c => { if (r.includes(c.value)) ok = false; });
+              if (ok && remaining.length === k) {
+                const highest = r[r.length - 1];
+                return { type: 'plane_with_single', valid: true, count: k, value: valuesOrder.indexOf(highest) };
+              }
+            }
+
+            // 飞机带对：剩余为 k 对（共 2*k 张）
+            if (cards.length === triplesCardCount + 2 * k) {
+              const remCounts = {};
+              let ok = true;
+              remaining.forEach(c => { remCounts[c.value] = (remCounts[c.value] || 0) + 1; if (r.includes(c.value)) ok = false; });
+              if (ok) {
+                const pairs = Object.values(remCounts).every(v => v === 2);
+                const pairsCount = Object.values(remCounts).length;
+                if (pairs && pairsCount === k) {
+                  const highest = r[r.length - 1];
+                  return { type: 'plane_with_pair', valid: true, count: k, value: valuesOrder.indexOf(highest) };
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // 四带二
   if (cards.length === 6) {
     const valueCounts = {};
     cards.forEach(card => {
       valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
     });
-    
+
     const counts = Object.values(valueCounts);
     if (counts.includes(4) && (counts.filter(c => c === 1).length === 2 || counts.filter(c => c === 2).length === 1)) {
       const fourValue = Object.keys(valueCounts).find(v => valueCounts[v] === 4);
@@ -197,23 +284,33 @@ const getCardType = (cards) => {
 // 比较牌型大小
 const canBeat = (currentCards, lastCards) => {
   if (lastCards.length === 0) return true; // 没有上一手牌，任何牌都可以出
-  
+
   const currentType = getCardType(currentCards);
   const lastType = getCardType(lastCards);
-  
+
   // 王炸最大
   if (currentType.type === 'king_bomb') return true;
   if (lastType.type === 'king_bomb') return false;
-  
+
   // 普通炸弹比非炸弹大
   if (currentType.type === 'bomb' && lastType.type !== 'bomb') return true;
   if (currentType.type !== 'bomb' && lastType.type === 'bomb') return false;
-  
+
+  // 飞机家族比较：plane / plane_with_single / plane_with_pair
+  const isPlaneType = t => t && (t.type === 'plane' || t.type === 'plane_with_single' || t.type === 'plane_with_pair');
+  if (isPlaneType(currentType) && isPlaneType(lastType)) {
+    // 必须相同数量的三张组（count）才能比较
+    if (currentType.count && lastType.count && currentType.count === lastType.count) {
+      return currentType.value > lastType.value;
+    }
+    return false;
+  }
+
   // 同类型比较
   if (currentType.type === lastType.type) {
     return currentType.value > lastType.value;
   }
-  
+
   return false;
 };
 
@@ -604,12 +701,35 @@ export default function App() {
     }
   };
 
-  // 计算手牌重叠量（根据手牌数量自适应）
+  // 计算手牌重叠量以保证尽量一屏显示（返回 marginLeft 值，可为负数）
+  // 为老年人优化：使用更保守的重叠策略，避免出牌后布局变化
   const computeOverlap = (count) => {
-    if (count <= 6) return -8;
-    if (count <= 10) return -16;
-    if (count <= 14) return -28;
-    return -38;
+    const screenWidth = Dimensions.get('window').width;
+    const horizontalPadding = 32; // SafeArea + container padding 估算
+    const containerWidth = Math.max(200, screenWidth - horizontalPadding);
+    const cardWidth = 64; // 增大卡片宽度以适应老年人
+
+    if (count <= 1) return 0;
+
+    // 使用更保守的重叠策略，确保牌不会太分散
+    // 计算最多能容纳的牌数，以确保所有牌都在屏幕内
+    const maxCardsOnScreen = Math.floor(containerWidth / (cardWidth * 0.6)); // 0.6是重叠比例
+    const effectiveCount = Math.min(count, maxCardsOnScreen);
+
+    // 期望每张卡片横向占用的空间（允许为负表示重叠）
+    const idealSpacing = (containerWidth - cardWidth) / (effectiveCount - 1);
+
+    // marginLeft = spacing - cardWidth
+    let marginLeft = Math.round(idealSpacing - cardWidth);
+
+    // 限制最大与最小重叠，避免过度重叠或完全分散
+    const maxOverlap = -12; // 增加重叠，使牌更紧凑
+    const minOverlap = -Math.floor(cardWidth * 0.8); // 最多重叠 80%，确保牌可见
+
+    if (marginLeft > maxOverlap) marginLeft = maxOverlap;
+    if (marginLeft < minOverlap) marginLeft = minOverlap;
+
+    return marginLeft;
   };
 
   // 加载并保存 cardOrder 到本地存储
@@ -1167,20 +1287,29 @@ export default function App() {
 
           {pendingBottom.owner === 0 && pendingBottom.cards.length > 0 && !bottomInserted && (
             <View style={styles.pendingBottomRow}>
-              {pendingBottom.cards.map((card, idx) => (
-                <View key={idx} style={[styles.card, styles.pendingCard, { marginLeft: idx === 0 ? 0 : -46 }]}>
-                  <View style={styles.cardCorner}>
-                    {card.type === 'joker' ? (
-                      <Text style={[styles.jokerText, card.realValue && card.realValue.indexOf('大') !== -1 ? styles.jokerRed : styles.jokerBlack]}>J{"\n"}O{"\n"}K{"\n"}E{"\n"}R</Text>
-                    ) : (
-                      <>
-                        <Text style={styles.cardValueSmall}>{card.value}</Text>
-                        <Text style={styles.cardSuitSmall}>{card.suit}</Text>
-                      </>
-                    )}
-                  </View>
-                  {/* 中间花色已移除，花色改为角落小字显示 */}
-                </View>
+              {(() => {
+                const cards = pendingBottom.cards || [];
+                const baseOverlapP = computeOverlap(cards.length);
+                return cards.map((card, idx) => {
+                  const prev = idx > 0 ? cards[idx - 1] : null;
+                  let marginLeftP = idx === 0 ? 0 : baseOverlapP;
+                  if (prev && prev.value === card.value) marginLeftP = Math.floor(baseOverlapP * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
+                  return (
+                    <View key={idx} style={[styles.card, styles.pendingCard, { marginLeft: idx === 0 ? 0 : marginLeftP }]}>
+                      <View style={styles.cardCorner}>
+                        {card.type === 'joker' ? (
+                          <Text style={[styles.jokerText, card.realValue && card.realValue.indexOf('大') !== -1 ? styles.jokerRed : styles.jokerBlack]}>J{"\n"}O{"\n"}K{"\n"}E{"\n"}R</Text>
+                        ) : (
+                          <>
+                            <Text style={styles.cardValueSmall}>{card.value}</Text>
+                            <Text style={styles.cardSuitSmall}>{card.suit}</Text>
+                          </>
+                        )}
+                      </View>
+                      {/* 中间花色已移除，花色改为角落小字显示 */}
+                    </View>
+                  );
+                })}
               ))}
               <TouchableOpacity style={styles.confirmButton} onPress={confirmBottomForPlayer}>
                 <Text style={styles.confirmButtonText}>确认收牌</Text>
@@ -1201,7 +1330,7 @@ export default function App() {
                 const prevCard = displayIndex > 0 ? displayed[displayIndex - 1] : null;
                 let marginLeft = displayIndex === 0 ? 0 : baseOverlap;
                 if (prevCard && prevCard.value === card.value) {
-                  marginLeft = Math.floor(baseOverlap * 1.3); // 相同点数靠得更紧一些（更重叠）
+                  marginLeft = Math.floor(baseOverlap * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
                 }
                 return (
                   <View
@@ -1365,7 +1494,7 @@ export default function App() {
               return cards.map((card, idx) => {
                 const prev = idx > 0 ? cards[idx - 1] : null;
                 let marginLeftP = idx === 0 ? 0 : baseOverlapP;
-                if (prev && prev.value === card.value) marginLeftP = Math.floor(baseOverlapP * 1.3);
+                if (prev && prev.value === card.value) marginLeftP = Math.floor(baseOverlapP * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
                 return (
                   <View key={idx} style={[styles.card, styles.pendingCard, { marginLeft: idx === 0 ? 0 : marginLeftP }]}>
                     <View style={styles.cardCorner}>
@@ -1401,7 +1530,7 @@ export default function App() {
               const realIndex = getRealIndex(displayIndex);
               const prevCard = displayIndex > 0 ? displayed[displayIndex - 1] : null;
               let marginLeft = displayIndex === 0 ? 0 : baseOverlap;
-              if (prevCard && prevCard.value === card.value) marginLeft = Math.floor(baseOverlap * 1.3);
+              if (prevCard && prevCard.value === card.value) marginLeft = Math.floor(baseOverlap * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
               return (
                 <TouchableOpacity 
                   key={displayIndex} 
@@ -1492,14 +1621,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: {
-    fontSize: 40,
+    fontSize: 44,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 10,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 20,
+    fontSize: 24,
     color: '#ccc',
     marginBottom: 30,
     textAlign: 'center',
@@ -1523,20 +1652,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   startButtonText: {
-    fontSize: 22,
+    fontSize: 26,
     color: '#fff',
     fontWeight: 'bold',
   },
   settingsButtonText: {
-    fontSize: 22,
+    fontSize: 26,
     color: '#fff',
     fontWeight: 'bold',
   },
   description: {
-    fontSize: 18,
+    fontSize: 22,
     color: '#fff',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 30,
   },
   infoBar: {
     flexDirection: 'row',
@@ -1547,7 +1676,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   infoText: {
-    fontSize: 18,
+    fontSize: 20,
     color: '#fff',
     fontWeight: 'bold',
   },
@@ -1560,9 +1689,9 @@ const styles = StyleSheet.create({
   },
   topPlayerSmall: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 12,
-    margin: 6,
-    borderRadius: 12,
+    padding: 15,
+    margin: 8,
+    borderRadius: 15,
     alignItems: 'center',
     width: '48%',
   },
@@ -1573,12 +1702,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   playerName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#fff',
   },
   cardCount: {
-    fontSize: 18,
+    fontSize: 20,
     color: '#fff',
   },
   centerArea: {
@@ -1594,48 +1723,48 @@ const styles = StyleSheet.create({
     borderRadius: 15,
   },
   lastPlayText: {
-    fontSize: 20,
+    fontSize: 24,
     color: '#fff',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   lastPlayCards: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   cardPlaceholder: {
-    width: 60,
-    height: 80,
+    width: 68,
+    height: 90,
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    margin: 4,
+    margin: 6,
   },
   cardText: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   jokerTextSmall: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 20,
   },
   lastPlayerText: {
-    fontSize: 18,
+    fontSize: 22,
     color: '#ffcc00',
     fontWeight: 'bold',
   },
   waitingText: {
-    fontSize: 24,
+    fontSize: 28,
     color: '#fff',
   },
   biddingText: {
-    fontSize: 20,
+    fontSize: 24,
     color: '#fff',
-    marginBottom: 10,
+    marginBottom: 12,
     fontWeight: 'bold',
   },
   bottomPlayer: {
@@ -1650,13 +1779,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   card: {
-    width: 56,
-    height: 84,
+    width: 64,
+    height: 96,
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    margin: 5,
+    margin: 6,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
@@ -1669,24 +1798,24 @@ const styles = StyleSheet.create({
   },
   cardCorner: {
     position: 'absolute',
-    top: 4,
-    left: 2,
+    top: 6,
+    left: 3,
     alignItems: 'flex-start',
   },
   cardSuitSmall: {
-    fontSize: 12,
-    lineHeight: 14,
-    marginTop: 2,
+    fontSize: 14,
+    lineHeight: 16,
+    marginTop: 3,
   },
   cardValueSmall: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
   },
   jokerText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 20,
   },
   jokerRed: {
     color: 'red',
@@ -1739,46 +1868,46 @@ const styles = StyleSheet.create({
   },
   hintButton: {
     backgroundColor: '#9c27b0',
-    paddingHorizontal: 25,
-    paddingVertical: 15,
-    borderRadius: 25,
-    minWidth: 80,
+    paddingHorizontal: 30,
+    paddingVertical: 20,
+    borderRadius: 30,
+    minWidth: 100,
     alignItems: 'center',
   },
   bidButton: {
     backgroundColor: '#ff9800',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderRadius: 25,
-    minWidth: 60,
+    paddingHorizontal: 25,
+    paddingVertical: 20,
+    borderRadius: 30,
+    minWidth: 80,
     alignItems: 'center',
-    margin: 5,
+    margin: 8,
   },
   passButton: {
     backgroundColor: '#6c757d',
-    paddingHorizontal: 25,
-    paddingVertical: 15,
-    borderRadius: 25,
-    minWidth: 80,
+    paddingHorizontal: 30,
+    paddingVertical: 20,
+    borderRadius: 30,
+    minWidth: 100,
     alignItems: 'center',
     zIndex: 1010,
     elevation: 12,
   },
   playButton: {
     backgroundColor: '#28a745',
-    paddingHorizontal: 25,
-    paddingVertical: 15,
-    borderRadius: 25,
-    minWidth: 80,
+    paddingHorizontal: 30,
+    paddingVertical: 20,
+    borderRadius: 30,
+    minWidth: 100,
     alignItems: 'center',
   },
   buttonText: {
-    fontSize: 18,
+    fontSize: 20,
     color: '#fff',
     fontWeight: 'bold',
   },
   largeButtonText: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
   },
   gameOverContainer: {
@@ -1787,15 +1916,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   gameOverTitle: {
-    fontSize: 36,
+    fontSize: 40,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 20,
+    marginBottom: 25,
   },
   gameOverText: {
-    fontSize: 28,
+    fontSize: 32,
     color: '#fff',
-    marginBottom: 30,
+    marginBottom: 35,
   },
   logButton: {
     position: 'absolute',
@@ -1807,7 +1936,7 @@ const styles = StyleSheet.create({
   },
   logButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 20,
   },
   modalContainer: {
     flex: 1,
@@ -1832,9 +1961,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: 25,
     color: '#333',
     textAlign: 'center',
   },
@@ -1842,10 +1971,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   ruleText: {
-    fontSize: 18,
-    marginBottom: 12,
+    fontSize: 22,
+    marginBottom: 15,
     color: '#333',
-    lineHeight: 26,
+    lineHeight: 30,
   },
   logScrollView: {
     width: '100%',
@@ -1853,10 +1982,10 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   logText: {
-    fontSize: 16,
-    marginBottom: 8,
+    fontSize: 20,
+    marginBottom: 10,
     color: '#333',
-    lineHeight: 22,
+    lineHeight: 26,
   },
   closeButton: {
     backgroundColor: '#ff6b35',
@@ -1868,7 +1997,7 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   gameModeButton: {
@@ -1884,14 +2013,14 @@ const styles = StyleSheet.create({
     borderColor: '#4a90e2',
   },
   gameModeButtonText: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 5,
+    marginBottom: 8,
   },
   gameModeDescription: {
-    fontSize: 16,
+    fontSize: 20,
     color: '#666',
-    lineHeight: 22,
+    lineHeight: 26,
   },
 });
