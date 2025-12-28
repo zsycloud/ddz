@@ -738,6 +738,21 @@ export default function App() {
   const [highestBid, setHighestBid] = useState(0); // 最高叫分
   const [bidder, setBidder] = useState(-1); // 当前叫分者
   const [bids, setBids] = useState([0, 0, 0]); // 每个玩家的叫分 [玩家, 电脑1, 电脑2]
+  const [totalScore, setTotalScore] = useState(0); // 玩家总分
+
+  // 加载和保存总分
+  useEffect(() => {
+    (async () => {
+      try {
+        const savedScore = await AsyncStorage.getItem('totalScore');
+        if (savedScore !== null) {
+          setTotalScore(parseInt(savedScore) || 0);
+        }
+      } catch (e) {
+        console.warn('读取总分失败', e);
+      }
+    })();
+  }, []);
 
   // 头像组件
   const PlayerAvatar = ({ playerIndex, size = 40, showLabel = false }) => {
@@ -1217,16 +1232,54 @@ export default function App() {
     const isLandlordWin = landlord === winnerIndex;
     // 计算关住人数（未出牌的对手）
     const locked = [0,1,2].filter(i => i !== winnerIndex && !playedAny[i]).length;
-    const multiplier = Math.pow(2, bombsCount + locked);
+
+    // 计算倍数：炸弹翻倍 + 春天/反春天翻倍
+    let multiplier = Math.pow(2, bombsCount); // 炸弹翻倍
+
+    // 检查是否为春天或反春天
+    const isLandlordWinner = winnerIndex === landlord; // 地主获胜
+    const isAllFarmersLocked = landlord !== -1 &&
+      ((landlord === 0 && !playedAny[1] && !playedAny[2]) || // 玩家是地主，两个电脑农民都没出牌
+       (landlord === 1 && !playedAny[0] && !playedAny[2]) || // 电脑1是地主，玩家和电脑2都没出牌
+       (landlord === 2 && !playedAny[0] && !playedAny[1])); // 电脑2是地主，玩家和电脑1都没出牌
+
+    const isSpring = isLandlordWinner && isAllFarmersLocked; // 春天：地主获胜且农民都没出牌
+    const isAntiSpring = !isLandlordWinner && isAllFarmersLocked; // 反春天：农民获胜且地主没出牌（地主首出牌就失败）
+
+    if (isSpring || isAntiSpring) {
+      multiplier *= 2; // 春天或反春天翻倍
+    }
+
     const base = Math.max(1, highestBid);
     const score = base * multiplier;
+
+    // 计算新的总分
+    let newTotalScore = totalScore;
+    if (winnerIndex === 0) { // 玩家获胜
+      newTotalScore += score;
+    } else { // 玩家失败
+      newTotalScore -= score;
+    }
+
+    // 确保分数不为负数
+    newTotalScore = Math.max(0, newTotalScore);
 
     setGameState('gameOver');
     const result = isLandlordWin ? '地主获胜！' : '农民获胜！';
     setGameLog(prev => [...prev, `游戏结束：${result}（炸弹 ${bombsCount} 次，关住 ${locked} 人，倍数 x${multiplier}） 得分 ${score}`]);
 
-    const winMessage = `${result}\n基础分: ${base}\n炸弹: ${bombsCount} 次\n关住: ${locked} 人\n倍数: x${multiplier}\n最终得分: ${score}`;
+    const winMessage = `${result}\n基础分: ${base}\n炸弹: ${bombsCount} 次\n关住: ${locked} 人\n倍数: x${multiplier}\n本次得分: ${score}\n总分: ${newTotalScore}`;
     Alert.alert('游戏结束', winMessage, [{ text: '再来一局', onPress: startNewGame }]);
+
+    // 更新总分并保存
+    setTotalScore(newTotalScore);
+    (async () => {
+      try {
+        await AsyncStorage.setItem('totalScore', newTotalScore.toString());
+      } catch (e) {
+        console.warn('保存总分失败', e);
+      }
+    })();
 
     // 重置提示索引
     setHintIndex(0);
@@ -1583,7 +1636,11 @@ export default function App() {
         <View style={styles.menuContainer}>
           <Text style={styles.title}>老人斗地主</Text>
           <Text style={styles.subtitle}>纯净版 • 无广告 • 无内购</Text>
-          
+
+          <View style={{ alignItems: 'center', marginVertical: 10 }}>
+            <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>总分: {totalScore}</Text>
+          </View>
+
           <TouchableOpacity style={styles.startButton} onPress={startNewGame}>
             <Text style={styles.startButtonText}>开始游戏</Text>
           </TouchableOpacity>
@@ -1893,6 +1950,7 @@ export default function App() {
         <View style={styles.gameOverContainer}>
           <Text style={styles.gameOverTitle}>游戏结束</Text>
           <Text style={styles.gameOverText}>游戏已结束</Text>
+          <Text style={styles.gameOverText}>总分: {totalScore}</Text>
           <TouchableOpacity style={styles.startButton} onPress={startNewGame}>
             <Text style={styles.startButtonText}>再来一局</Text>
           </TouchableOpacity>
