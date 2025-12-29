@@ -9,7 +9,9 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
-  ScrollView
+  ScrollView,
+  Platform,
+  BackHandler
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -738,6 +740,8 @@ export default function App() {
   const [highestBid, setHighestBid] = useState(0); // 最高叫分
   const [bidder, setBidder] = useState(-1); // 当前叫分者
   const [bids, setBids] = useState([-1, -1, -1]); // 每个玩家的叫分 [玩家, 电脑1, 电脑2]，-1表示未叫分
+  const [consecutivePasses, setConsecutivePasses] = useState(0); // 连续不叫次数
+  const [lastBidder, setLastBidder] = useState(-1); // 上一个叫分的玩家
   const [totalScore, setTotalScore] = useState(0); // 玩家总分
 
   // 加载和保存总分
@@ -830,8 +834,12 @@ export default function App() {
       setGameLog(['发牌完成，开始叫地主！']);
       setLandlord(-1);
       setHighestBid(0);
-      setBidder(0); // 从玩家开始叫地主
+      // 随机选择先叫地主的玩家
+      const firstBidder = Math.floor(Math.random() * 3);
+      setBidder(firstBidder); // 随机选择先叫地主的玩家
       setBids([-1, -1, -1]);
+      setConsecutivePasses(0); // 重置连续不叫次数
+      setLastBidder(-1); // 重置上一个叫分的玩家
       setGamePhase('bidding');
       setGameState('playing'); // 现在开始游戏，但处于叫地主阶段
     } else if (gameMode === 'classic') {
@@ -870,7 +878,9 @@ export default function App() {
       setGameLog(['发牌完成，自动叫地主中...']);
       setLandlord(-1);
       setHighestBid(0);
-      setBidder(0); // 从玩家开始叫地主
+      // 随机选择先叫地主的玩家
+      const firstBidder = Math.floor(Math.random() * 3);
+      setBidder(firstBidder); // 随机选择先叫地主的玩家
       setBids([-1, -1, -1]);
       setGamePhase('bidding');
       setGameState('playing');
@@ -920,8 +930,12 @@ export default function App() {
       setGameLog(['发牌完成，开始叫地主！']);
       setLandlord(-1);
       setHighestBid(0);
-      setBidder(0); // 从玩家开始叫地主
+      // 随机选择先叫地主的玩家
+      const firstBidder = Math.floor(Math.random() * 3);
+      setBidder(firstBidder); // 随机选择先叫地主的玩家
       setBids([-1, -1, -1]);
+      setConsecutivePasses(0); // 重置连续不叫次数
+      setLastBidder(-1); // 重置上一个叫分的玩家
       setGamePhase('bidding');
       setGameState('playing'); // 现在开始游戏，但处于叫地主阶段
     }
@@ -957,6 +971,15 @@ export default function App() {
     if (bid > highestBid) {
       setHighestBid(bid);
       setLandlord(0); // 暂时设定玩家为地主，如果没人更高分则最终确定
+      setLastBidder(0); // 记录上一个叫分的玩家
+      setConsecutivePasses(0); // 重置连续不叫次数
+    } else if (bid === 0) {
+      // 玩家不叫
+      setConsecutivePasses(prev => prev + 1);
+    } else {
+      // 玩家叫了分但不是最高分
+      setLastBidder(0); // 记录上一个叫分的玩家
+      setConsecutivePasses(1); // 重置连续不叫次数为1
     }
 
     setGameLog(prev => [...prev, `您叫了${bid === 0 ? '不叫' : bid + '分'}`]);
@@ -970,18 +993,8 @@ export default function App() {
       setPendingBottom({ owner: 0, cards: bottomCards });
       setBottomInserted(false);
       setBottomCards([]);
-    } else if (bid > 0 && bids[1] === 0 && bids[2] === 0) {
-      // 玩家叫了分，两个电脑都不叫，玩家成为地主
-      setLandlord(0);
-      setGamePhase('playing');
-      setCurrentPlayer(0); // 玩家先出牌
-      setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
-      setPendingBottom({ owner: 0, cards: bottomCards });
-      setBottomInserted(false);
-      setBottomCards([]);
     } else {
-      // 检查是否其他人都已经不叫（即电脑1和电脑2都已决定不叫）
-      // 由于电脑叫分是异步的，我们先轮到下一个玩家，让电脑逻辑处理
+      // 轮到下一个玩家
       setBidder(prev => (prev + 1) % 3);
     }
   };
@@ -997,14 +1010,33 @@ export default function App() {
     newBids[0] = 0; // 不叫
     setBids(newBids);
 
-    // 检查是否所有玩家都已决定（即所有叫分都已处理）
-    // 如果玩家不叫，而两个电脑也不叫，则重新发牌
-    if (newBids[1] === 0 && newBids[2] === 0) {
-      // 所有人都不叫，重新发牌
-      setGameLog(prev => [...prev, '无人叫分，重新发牌']);
-      setTimeout(() => {
-        initGame();
-      }, 2000);
+    // 更新连续不叫次数
+    setConsecutivePasses(prev => prev + 1);
+
+    // 检查是否连续两个不叫
+    if (consecutivePasses + 1 >= 2 && lastBidder !== -1) {
+      // 连续两个不叫，上一个叫分的玩家成为地主
+      setLandlord(lastBidder);
+      setGamePhase('playing');
+      setCurrentPlayer(lastBidder);
+
+      if (lastBidder === 0) {
+        // 玩家成为地主
+        setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
+        setPendingBottom({ owner: 0, cards: bottomCards });
+        setBottomInserted(false);
+      } else {
+        // 电脑成为地主
+        let newComputerHand = lastBidder === 1 ? [...computer1Hand] : [...computer2Hand];
+        newComputerHand = [...newComputerHand, ...bottomCards].sort(compareCardValues);
+        if (lastBidder === 1) {
+          setComputer1Hand(newComputerHand);
+        } else {
+          setComputer2Hand(newComputerHand);
+        }
+        setGameLog(prev => [...prev, `电脑${lastBidder}成为地主，获得底牌！`]);
+      }
+      setBottomCards([]);
     } else {
       // 轮到下一个玩家
       setBidder(prev => (prev + 1) % 3);
@@ -1075,6 +1107,21 @@ export default function App() {
 
         setGameLog(prev => [...prev, `电脑${computerIndex}叫了${bid === 0 ? '不叫' : bid + '分'}`]);
 
+        // 更新叫分状态
+        if (bid > highestBid) {
+          setHighestBid(bid);
+          setLandlord(computerIndex); // 暂时设定为地主
+          setLastBidder(computerIndex); // 记录上一个叫分的玩家
+          setConsecutivePasses(0); // 重置连续不叫次数
+        } else if (bid === 0) {
+          // 电脑不叫
+          setConsecutivePasses(prev => prev + 1);
+        } else {
+          // 电脑叫了分但不是最高分
+          setLastBidder(computerIndex); // 记录上一个叫分的玩家
+          setConsecutivePasses(1); // 重置连续不叫次数为1
+        }
+
         // 检查是否应该结束叫地主
         if (bid === 3) {
           // 有人叫了3分，直接结束
@@ -1117,105 +1164,17 @@ export default function App() {
               setBottomCards([]);
             }
           }
-        } else {
-          // 检查是否当前电脑是最后一个叫分的（即其他人都已不叫）
-          const otherPlayers = [0, 1, 2].filter(i => i !== computerIndex);
-          const allOthersPassed = otherPlayers.every(i => newBids[i] === 0);
-
-          if (allOthersPassed && bid > 0) {
-            // 当前电脑叫了分，其他人都不叫，当前电脑成为地主
-            setLandlord(computerIndex);
-            setGamePhase('playing');
-            setCurrentPlayer(computerIndex);
-
-            if (computerIndex === 1) {
-              setComputer1Hand([...computer1Hand, ...bottomCards].sort(compareCardValues));
-              setGameLog(prev => [...prev, `电脑1成为地主，获得底牌！`]);
-            } else if (computerIndex === 2) {
-              setComputer2Hand([...computer2Hand, ...bottomCards].sort(compareCardValues));
-              setGameLog(prev => [...prev, `电脑2成为地主，获得底牌！`]);
-            }
-
-            setBottomCards([]);
-            setGameLog(prev => [...prev, `游戏开始！地主是电脑${computerIndex}`]);
-          } else if (newBids.every(bid => bid !== -1)) { // 所有人都已叫分
-            // 所有人都已叫分，选择最高分者为地主
-            const highestBidder = newBids[0] >= newBids[1] && newBids[0] >= newBids[2] ? 0 :
-                                 newBids[1] >= newBids[0] && newBids[1] >= newBids[2] ? 1 : 2;
-            if (newBids[highestBidder] > 0) { // 确保最高分大于0
-              setLandlord(highestBidder);
-              setGamePhase('playing');
-              setCurrentPlayer(highestBidder);
-
-              let newPlayerHand = [...playerHand];
-              let newComputer1Hand = [...computer1Hand];
-              let newComputer2Hand = [...computer2Hand];
-
-              switch(highestBidder) {
-                case 0: // 玩家是地主
-                  setPendingBottom({ owner: 0, cards: bottomCards });
-                  setBottomInserted(false);
-                  setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
-                  break;
-                case 1: // 电脑1是地主
-                  newComputer1Hand = [...computer1Hand, ...bottomCards].sort(compareCardValues);
-                  setGameLog(prev => [...prev, `电脑1成为地主，获得底牌！`]);
-                  break;
-                case 2: // 电脑2是地主
-                  newComputer2Hand = [...computer2Hand, ...bottomCards].sort(compareCardValues);
-                  setGameLog(prev => [...prev, `电脑2成为地主，获得底牌！`]);
-                  break;
-              }
-
-              if (highestBidder !== 0) { // 如果不是玩家成为地主，则更新手牌
-                setPlayerHand(newPlayerHand);
-                setComputer1Hand(newComputer1Hand);
-                setComputer2Hand(newComputer2Hand);
-                setBottomCards([]);
-              }
-            }
-          } else if (bids[0] > 0 && newBids[1] === 0 && newBids[2] === 0) {
-            // 玩家叫了分，两个电脑都不叫，玩家成为地主
-            setLandlord(0);
-            setGamePhase('playing');
-            setCurrentPlayer(0); // 玩家先出牌
-            setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
-            setPendingBottom({ owner: 0, cards: bottomCards });
-            setBottomInserted(false);
-            setBottomCards([]);
-          } else {
-            // 轮到下一个玩家
-            setBidder(prev => (prev + 1) % 3);
-          }
-        }
-      }, 1500); // 1.5秒后电脑叫分
-
-      return () => clearTimeout(timer);
-    }
-  }, [bidder, gamePhase, highestBid, bids]);
-
-
-  // 检查叫地主是否结束
-  useEffect(() => {
-    if (gamePhase === 'bidding') {
-      // 检查是否所有玩家都已叫分
-      const allCalled = bids[0] !== -1 && bids[1] !== -1 && bids[2] !== -1;
-      if (allCalled && bids[0] !== 0 && bids[1] !== 0 && bids[2] !== 0) {
-        // 所有人都已叫分且都没选择不叫（这在实际中不太可能，因为至少有人要成为地主）
-        // 实际上，我们只处理所有玩家都已叫分的情况
-        // 选择最高分者为地主
-        const highestBidder = bids[0] >= bids[1] && bids[0] >= bids[2] ? 0 :
-                             bids[1] >= bids[0] && bids[1] >= bids[2] ? 1 : 2;
-        if (bids[highestBidder] > 0) { // 确保最高分大于0
-          setLandlord(highestBidder);
+        } else if (consecutivePasses >= 2 && lastBidder !== -1) {
+          // 连续两个不叫，上一个叫分的玩家成为地主
+          setLandlord(lastBidder);
           setGamePhase('playing');
-          setCurrentPlayer(highestBidder);
+          setCurrentPlayer(lastBidder);
 
           let newPlayerHand = [...playerHand];
           let newComputer1Hand = [...computer1Hand];
           let newComputer2Hand = [...computer2Hand];
 
-          switch(highestBidder) {
+          switch(lastBidder) {
             case 0: // 玩家是地主
               setPendingBottom({ owner: 0, cards: bottomCards });
               setBottomInserted(false);
@@ -1231,16 +1190,23 @@ export default function App() {
               break;
           }
 
-          if (highestBidder !== 0) { // 如果不是玩家成为地主，则更新手牌
+          if (lastBidder !== 0) { // 如果不是玩家成为地主，则更新手牌
             setPlayerHand(newPlayerHand);
             setComputer1Hand(newComputer1Hand);
             setComputer2Hand(newComputer2Hand);
             setBottomCards([]);
           }
+        } else {
+          // 轮到下一个玩家
+          setBidder(prev => (prev + 1) % 3);
         }
-      }
+      }, 1500); // 1.5秒后电脑叫分
+
+      return () => clearTimeout(timer);
     }
-  }, [bids, gamePhase, setLandlord, setGamePhase, setCurrentPlayer, setPlayerHand, setComputer1Hand, setComputer2Hand, setPendingBottom, setBottomCards, setGameLog, playerHand, computer1Hand, computer2Hand, bottomCards]);
+  }, [bidder, gamePhase, highestBid, bids]);
+
+
 
 
   // 选择牌
@@ -1390,7 +1356,7 @@ export default function App() {
     setGameLog(prev => [...prev, `游戏结束：${result}（炸弹 ${bombsCount} 次，关住 ${locked} 人，倍数 x${multiplier}） 得分 ${score}`]);
 
     const winMessage = `${result}\n基础分: ${base}\n炸弹: ${bombsCount} 次\n关住: ${locked} 人\n倍数: x${multiplier}\n本次得分: ${score}\n总分: ${newTotalScore}`;
-    Alert.alert('游戏结束', winMessage, [{ text: '再来一局', onPress: startNewGame }]);
+    Alert.alert('游戏结束', winMessage, [{ text: '确定', onPress: () => {} }]);
 
     // 更新总分并保存
     setTotalScore(newTotalScore);
@@ -1405,6 +1371,10 @@ export default function App() {
     // 重置提示索引
     setHintIndex(0);
     setPossiblePlays([]);
+
+    // 重置叫地主相关状态
+    setConsecutivePasses(0);
+    setLastBidder(-1);
   };
 
   // 出牌
@@ -1644,7 +1614,7 @@ export default function App() {
               setConsecutivePasses(prev => {
                 const next = prev + 1;
                 if (next >= 2) {
-                  setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
+                  setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `��脑${lastPlayer}`} 任意出牌`]);
                   setLastPlayedCards([]);
                   setCurrentPlayer(lastPlayer);
                   return 0;
@@ -1774,6 +1744,31 @@ export default function App() {
             <Text style={styles.settingsButtonText}>选择游戏模式</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity style={styles.settingsButton} onPress={() => {
+            if (Platform.OS === 'android') {
+              BackHandler.exitApp();
+            } else {
+              // 对于iOS，我们显示一个确认对话框
+              Alert.alert(
+                '退出游戏',
+                '您确定要退出游戏吗？',
+                [
+                  { text: '取消', style: 'cancel' },
+                  { text: '确定', onPress: () => {
+                    // 这接退出应用
+                    if (Platform.OS === 'ios') {
+                      // iOS无法直接退出应用，可以隐藏应用
+                      // 但通常不推荐这样做，我们可以提醒用户使用后台管理
+                      Alert.alert('提示', '请使用系统后台管理功能退出应用');
+                    }
+                  }}
+                ]
+              );
+            }
+          }}>
+            <Text style={styles.settingsButtonText}>退出游戏</Text>
+          </TouchableOpacity>
+
           <Text style={styles.description}>
             经典斗地主游戏，专为老人设计\n界面简洁，操作方便
           </Text>
@@ -1791,7 +1786,7 @@ export default function App() {
               <ScrollView style={styles.rulesContainer}>
                 <Text style={styles.ruleText}>• 游戏人数：3人（您和2个电脑对手）</Text>
                 <Text style={styles.ruleText}>• 牌数：每人17张，底牌3张</Text>
-                <Text style={styles.ruleText}>• 叫地主：依次叫1分、2分、3分或不叫</Text>
+                <Text style={styles.ruleText}>• 叫地主：随机选择一位玩家先叫，依次叫1分、2分、3分或不叫</Text>
                 <Text style={styles.ruleText}>• 地主：叫分最高的玩家获得底牌，���出牌</Text>
                 <Text style={styles.ruleText}>• 农民：另外两个玩家合作对抗地主</Text>
                 <Text style={styles.ruleText}>• 胜负：地主先出完牌则地主获胜，否则农民获胜</Text>
@@ -2072,9 +2067,14 @@ export default function App() {
           <Text style={styles.gameOverTitle}>游戏结束</Text>
           <Text style={styles.gameOverText}>游戏已结束</Text>
           <Text style={styles.gameOverText}>总分: {totalScore}</Text>
-          <TouchableOpacity style={styles.startButton} onPress={startNewGame}>
-            <Text style={styles.startButtonText}>再来一局</Text>
-          </TouchableOpacity>
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={styles.startButton} onPress={startNewGame}>
+              <Text style={styles.startButtonText}>再来一局</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.settingsButton} onPress={() => setGameState('menu')}>
+              <Text style={styles.settingsButtonText}>返回主菜单</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );
