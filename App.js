@@ -1979,8 +1979,7 @@ export default function App() {
           // 重置提示索引
           setHintIndex(0);
           setPossiblePlays([]);
-        }
-          } else {
+        } else {
           // 电脑过牌（未进入上面分支），也计入连续过牌
           setConsecutivePasses(prev => {
             const next = prev + 1;
