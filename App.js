@@ -1610,7 +1610,7 @@ export default function App() {
     setPlayerHand(newPlayerHand);
     setLastPlayedCards(playedCards);
     setLastPlayer(0);
-    setBiddingConsecutivePasses(0);
+    setConsecutivePasses(0);
     setSelectedCards([]);
     
     // �����游戏���志
@@ -1641,7 +1641,7 @@ export default function App() {
     
     setGameLog(prev => [...prev, '您选择过牌']);
     setSelectedCards([]);
-    setBiddingConsecutivePasses(prev => {
+    setConsecutivePasses(prev => {
       const next = prev + 1;
       if (next >= 2) {
         setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
