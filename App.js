@@ -709,6 +709,7 @@ const canBeat = (currentCards, lastCards) => {
 
 // 游戏主组件
 export default function App() {
+  const DEV_DEBUG = true; // 开发时显示调试覆盖层
   const [gameState, setGameState] = useState('menu'); // menu, dealing, bidding, playing, gameOver
   const [gameMode, setGameMode] = useState('standard'); // standard, classic, fast, threeKing
   const [deck, setDeck] = useState([]);
@@ -1447,44 +1448,36 @@ export default function App() {
   // 重叠度：0%表示牌紧贴，负值表示重叠
   const computeOverlap = (count) => {
     const screenWidth = Dimensions.get('window').width;
-    const horizontalPadding = 4; // 进一步减少边距，让牌能更占满屏幕
+    const horizontalPadding = 4; // 进一步减少边距
     const containerWidth = screenWidth - horizontalPadding;
     const cardWidth = 58; // 卡片宽度（与样式中一致）
 
     if (count <= 1) return 0;
 
-    // 为了确保所有牌都在容器内，计算最大允许的间距
-    // 第n张牌的右边界：(n-1) * marginLeft + cardWidth <= containerWidth
-    // 解得：marginLeft <= (containerWidth - cardWidth) / (count - 1)
-    const maxAllowedSpacing = (containerWidth - cardWidth) / (count - 1);
-    // 平滑插值参数（可调）：
-    const MIN_OVERLAP = 0.12; // 最小重叠比例（12%）——保证总有一点重叠
-    const MAX_OVERLAP = 0.72; // 最大重叠比例（20张及以上）
-    const MAX_COUNT = 20; // 对应 MAX_OVERLAP
-    const exponent = 0.5; // 使用幂函数（sqrt）使曲线在高牌数处更接近 MAX_OVERLAP
+    // 平滑插值参数
+    const MIN_OVERLAP = 0.12; // 最小重叠比例
+    const MAX_OVERLAP = 0.72; // 最大重叠比例
+    const MAX_COUNT = 20;
+    const exponent = 0.5;
 
-    // 计算基于牌数的目标重叠比例（0..1），使用归一化并应用幂函数
     const t = Math.max(0, Math.min(1, (count - 1) / (MAX_COUNT - 1)));
-    let targetOverlap = MIN_OVERLAP + (MAX_OVERLAP - MIN_OVERLAP) * Math.pow(t, exponent);
+    const targetOverlap = MIN_OVERLAP + (MAX_OVERLAP - MIN_OVERLAP) * Math.pow(t, exponent);
 
-    // 对于极端点（明确要求）：在 17 张附近接近 0.68，我们通过上面的参数已能达到接近值
-    // 现在根据容器可用空间，调整真实重叠以确保卡片能放下
+    // 期望相邻牌间距（正数），越大表示越分散，越小表示越重叠
+    const desiredSpacing = cardWidth * (1 - targetOverlap);
 
-    // 若空间充足（允许非重叠或正间距），优先使用允许的最大间距以减少重叠
-    if (maxAllowedSpacing >= cardWidth * (1 - targetOverlap)) {
-      // 可以使用目标偏移或更大间距（减少重叠）
-      return Math.floor(Math.min(maxAllowedSpacing, cardWidth));
-    }
+    // 为了保证所有牌可见，需要的间距为： (containerWidth - cardWidth) / (count - 1)
+    const requiredSpacing = (containerWidth - cardWidth) / (count - 1);
 
-    // 计算为了适配容器所需的最小重叠比例
-    const requiredOverlapToFit = 1 - (maxAllowedSpacing / cardWidth);
+    // 选择使用的间距：在可用空间与目标间距之间取较小值，优先保证不超出目标间距（即保留一定重叠）
+    const useSpacing = Math.min(requiredSpacing, desiredSpacing);
 
-    // 最终重叠比例至少为 targetOverlap，但如果空间不足需要增加到 requiredOverlapToFit
-    const finalOverlap = Math.max(targetOverlap, requiredOverlapToFit);
-    const clampedOverlap = Math.min(finalOverlap, MAX_OVERLAP);
+    // 计算 marginLeft（useSpacing - cardWidth），此值通常为负数表示重叠
+    const rawMargin = Math.round(useSpacing - cardWidth);
 
-    // 返回负的 marginLeft（重叠）或在极端情况下接近 -cardWidth*MAX_OVERLAP
-    return -Math.round(cardWidth * clampedOverlap);
+    // 不允许超过设定的最大重叠（负值的绝对值不能超过 cardWidth * MAX_OVERLAP）
+    const maxNeg = -Math.round(cardWidth * MAX_OVERLAP);
+    return Math.max(rawMargin, maxNeg);
   };
 
   // 加载并保存 cardOrder 到本地存储
@@ -2393,6 +2386,22 @@ export default function App() {
     );
   }
 
+  // 调试覆盖层（显示在叫分界面和游戏界面）
+  const DebugOverlay = () => {
+    if (!DEV_DEBUG) return null;
+    return (
+      <View style={styles.debugOverlay} pointerEvents="none">
+        <Text style={styles.debugText}>currentPlayer: {currentPlayer}</Text>
+        <Text style={styles.debugText}>lastPlayer: {lastPlayer}</Text>
+        <Text style={styles.debugText}>landlord: {landlord}</Text>
+        <Text style={styles.debugText}>gamePhase: {gamePhase}</Text>
+        <Text style={styles.debugText}>consecutivePasses: {consecutivePasses}</Text>
+        <Text style={styles.debugText}>landlordPlayCount: {landlordPlayCount}</Text>
+        <Text style={styles.debugText}>playerSkill: {playerSkill.toFixed(2)}</Text>
+      </View>
+    );
+  };
+
   // 游戏结束界面
   if (gameState === 'gameOver') {
     return (
@@ -2588,6 +2597,8 @@ export default function App() {
           <Text style={[styles.buttonText, styles.largeButtonText]}>出牌</Text>
         </TouchableOpacity>
       </View>
+
+      <DebugOverlay />
       
       {/* 选项菜单弹窗 */}
       <Modal
@@ -2657,6 +2668,7 @@ export default function App() {
           </View>
         </View>
       </Modal>
+      <DebugOverlay />
     </SafeAreaView>
   );
 }
@@ -3091,5 +3103,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  debugOverlay: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 8,
+    borderRadius: 8,
+    zIndex: 2000,
+  },
+  debugText: {
+    color: '#fff',
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
