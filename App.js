@@ -993,7 +993,8 @@ export default function App() {
     // 更新叫分状态
     if (bid > highestBid) {
       setHighestBid(bid);
-      setLandlord(0); // 暂时设定玩家为地主，如果没人更高分则最终确定
+      // 不要在此处设置 `landlord`，只记录上一个叫分的玩家
+      setLastBidderForBidding(0);
       newLastBidderForBidding = 0; // 记录玩家是上一个叫分的玩家
       newBiddingConsecutivePasses = 0; // 重置连续不叫次数
     } else if (bid === 0) {
@@ -1007,6 +1008,7 @@ export default function App() {
     // 检查是否应该结束叫地主
     if (bid === 3) {
       // 玩家叫了3分，直接结束叫地主
+      setLandlord(0);
       setGamePhase('playing');
       setCurrentPlayer(0); // 玩家先出牌
       setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`, `游戏开始！地主是您`]);
@@ -1252,7 +1254,7 @@ export default function App() {
           // 更新叫分状态
           if (bid > highestBid) {
             setHighestBid(bid);
-            setLandlord(computerIndex); // 暂时设定为地主
+            // 不要在此处设置 `landlord`，只记录上一个叫分的玩家
             newLastBidderForBidding = computerIndex; // 记录上一个叫分的玩家
             setLastBidderForBidding(computerIndex);
             newBiddingConsecutivePasses = 0; // 重置连续不叫次数
@@ -1270,8 +1272,10 @@ export default function App() {
           // 检查是否应该结束叫地主
           if (bid === 3) {
             // 有人叫了3分，直接结束
-            // 使用当前电脑作为地主，因为bid > highestBid时已经设置了地主
-            if (bid > highestBid) { // 确保当前电脑确实叫了3分并成为了地主
+            // 确保当前电脑确实叫了3分并成为了地主
+            if (bid > highestBid) {
+              // 最终确定地主为当前叫分者
+              setLandlord(computerIndex);
               // 给地主底牌
               let newPlayerHand = [...playerHand];
               let newComputer1Hand = [...computer1Hand];
