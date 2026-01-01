@@ -11,7 +11,8 @@ import {
   Modal,
   ScrollView,
   Platform,
-  BackHandler
+  BackHandler,
+  Dimensions
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -65,40 +66,40 @@ const compareCardValues = (card1, card2) => {
 // 牌型判断函数
 const getCardType = (cards) => {
   if (cards.length === 0) return { type: 'pass', valid: true };
-  
+
   // 排序
   const sortedCards = [...cards].sort(compareCardValues);
-  
+
   // 单张
-  if (cards.length === 1) return { type: 'single', valid: true, value: cardRank(cards[0]) };
-  
+  if (sortedCards.length === 1) return { type: 'single', valid: true, value: cardRank(sortedCards[0]) };
+
   // 对子
-  if (cards.length === 2 && cards[0].value === cards[1].value) return { type: 'pair', valid: true, value: cardRank(cards[0]) };
-  
+  if (sortedCards.length === 2 && sortedCards[0].value === sortedCards[1].value) return { type: 'pair', valid: true, value: cardRank(sortedCards[0]) };
+
   // 三张
-  if (cards.length === 3 && cards[0].value === cards[1].value && cards[1].value === cards[2].value) return { type: 'triple', valid: true, value: cardRank(cards[0]) };
-  
+  if (sortedCards.length === 3 && sortedCards[0].value === sortedCards[1].value && sortedCards[1].value === sortedCards[2].value) return { type: 'triple', valid: true, value: cardRank(sortedCards[0]) };
+
   // 三带一
-  if (cards.length === 4) {
+  if (sortedCards.length === 4) {
     const valueCounts = {};
-    cards.forEach(card => {
+    sortedCards.forEach(card => {
       valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
     });
-    
+
     const counts = Object.values(valueCounts);
     if (counts.includes(3) && counts.includes(1)) {
       const tripleValue = Object.keys(valueCounts).find(v => valueCounts[v] === 3);
       return { type: 'triple_with_single', valid: true, value: valuesOrder.indexOf(tripleValue) };
     }
   }
-  
+
   // 三带二
-  if (cards.length === 5) {
+  if (sortedCards.length === 5) {
     const valueCounts = {};
-    cards.forEach(card => {
+    sortedCards.forEach(card => {
       valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
     });
-    
+
     const counts = Object.values(valueCounts);
     if (counts.includes(3) && counts.includes(2)) {
       const tripleValue = Object.keys(valueCounts).find(v => valueCounts[v] === 3);
@@ -107,22 +108,22 @@ const getCardType = (cards) => {
   }
   
   // 王炸
-  if (cards.length === 2 && 
-      ((cards[0].id === 'small_joker' && cards[1].id === 'big_joker') || 
-       (cards[0].id === 'big_joker' && cards[1].id === 'small_joker'))) {
+  if (sortedCards.length === 2 &&
+      ((sortedCards[0].id === 'small_joker' && sortedCards[1].id === 'big_joker') ||
+       (sortedCards[0].id === 'big_joker' && sortedCards[1].id === 'small_joker'))) {
     return { type: 'king_bomb', valid: true, value: 999 }; // 王炸最大值
   }
-  
+
   // 普通炸弹
-  if (cards.length === 4 && cards[0].value === cards[1].value && 
-      cards[1].value === cards[2].value && cards[2].value === cards[3].value) {
-    return { type: 'bomb', valid: true, value: cardRank(cards[0]) };
+  if (sortedCards.length === 4 && sortedCards[0].value === sortedCards[1].value &&
+      sortedCards[1].value === sortedCards[2].value && sortedCards[2].value === sortedCards[3].value) {
+    return { type: 'bomb', valid: true, value: cardRank(sortedCards[0]) };
   }
-  
+
   // 顺子（至少5张）
-  if (cards.length >= 5) {
-    const uniqueValues = [...new Set(cards.map(c => c.value))];
-    if (uniqueValues.length !== cards.length) return { type: 'invalid', valid: false }; // 不能有重复值
+  if (sortedCards.length >= 5) {
+    const uniqueValues = [...new Set(sortedCards.map(c => c.value))];
+    if (uniqueValues.length !== sortedCards.length) return { type: 'invalid', valid: false }; // 不能有重复值
     
     const sortedValues = uniqueValues.sort((a, b) => {
       const valuesOrder = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
@@ -147,9 +148,9 @@ const getCardType = (cards) => {
   }
   
   // 连对（至少3对）
-  if (cards.length >= 6 && cards.length % 2 === 0) {
+  if (sortedCards.length >= 6 && sortedCards.length % 2 === 0) {
     const valueCounts = {};
-    cards.forEach(card => {
+    sortedCards.forEach(card => {
       valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
     });
 
@@ -157,15 +158,14 @@ const getCardType = (cards) => {
     if (counts.every(count => count === 2)) { // 所有牌都成对
       const uniqueValues = Object.keys(valueCounts);
       const sortedValues = uniqueValues.sort((a, b) => {
-        const valuesOrder = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
         return valuesOrder.indexOf(a) - valuesOrder.indexOf(b);
       });
 
       // 检查是否连续
       let isChain = true;
       for (let i = 1; i < sortedValues.length; i++) {
-        const currentIndex = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'].indexOf(sortedValues[i]);
-        const prevIndex = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'].indexOf(sortedValues[i-1]);
+        const currentIndex = valuesOrder.indexOf(sortedValues[i]);
+        const prevIndex = valuesOrder.indexOf(sortedValues[i-1]);
 
         if (currentIndex !== prevIndex + 1 || sortedValues[i] === '2') {
           isChain = false;
@@ -180,9 +180,9 @@ const getCardType = (cards) => {
   }
 
   // 飞机（至少两个连续的三张）以及飞机带翅膀（飞机带单牌/对子）检测
-  if (cards.length >= 6) {
+  if (sortedCards.length >= 6) {
     const valueCounts = {};
-    cards.forEach(card => {
+    sortedCards.forEach(card => {
       valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
     });
 
@@ -221,7 +221,7 @@ const getCardType = (cards) => {
             const tripleCards = [];
             const remaining = [];
             const usedCounts = {};
-            cards.forEach(c => {
+            sortedCards.forEach(c => {
               if (r.includes(c.value) && (usedCounts[c.value] || 0) < 3) {
                 tripleCards.push(c);
                 usedCounts[c.value] = (usedCounts[c.value] || 0) + 1;
@@ -231,13 +231,13 @@ const getCardType = (cards) => {
             });
 
             // 纯飞机
-            if (cards.length === triplesCardCount) {
+            if (sortedCards.length === triplesCardCount) {
               const highest = r[r.length - 1];
               return { type: 'plane', valid: true, count: k, value: valuesOrder.indexOf(highest) };
             }
 
             // 飞机带单：剩余 k 张单牌
-            if (cards.length === triplesCardCount + k) {
+            if (sortedCards.length === triplesCardCount + k) {
               let ok = true;
               remaining.forEach(c => { if (r.includes(c.value)) ok = false; });
               if (ok && remaining.length === k) {
@@ -247,7 +247,7 @@ const getCardType = (cards) => {
             }
 
             // 飞机带对：剩余为 k 对（共 2*k 张）
-            if (cards.length === triplesCardCount + 2 * k) {
+            if (sortedCards.length === triplesCardCount + 2 * k) {
               const remCounts = {};
               let ok = true;
               remaining.forEach(c => { remCounts[c.value] = (remCounts[c.value] || 0) + 1; if (r.includes(c.value)) ok = false; });
@@ -267,9 +267,9 @@ const getCardType = (cards) => {
   }
 
   // 四带二
-  if (cards.length === 6) {
+  if (sortedCards.length === 6) {
     const valueCounts = {};
-    cards.forEach(card => {
+    sortedCards.forEach(card => {
       valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
     });
 
@@ -734,14 +734,16 @@ export default function App() {
   const [gameLog, setGameLog] = useState([]); // 游戏日志
   const [showSettings, setShowSettings] = useState(false); // 设置界面
   const [showGameLog, setShowGameLog] = useState(false); // 游戏记录界面
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false); // 选项菜单界面
   const [showHowToPlay, setShowHowToPlay] = useState(false); // 游戏玩法说明
   const [showGameModeSelection, setShowGameModeSelection] = useState(false); // 游戏模式选择界面
   const [landlord, setLandlord] = useState(-1); // 地主 (-1: 未确定, 0,1,2: 地主)
   const [highestBid, setHighestBid] = useState(0); // 最高叫分
   const [bidder, setBidder] = useState(-1); // 当前叫分者
   const [bids, setBids] = useState([-1, -1, -1]); // 每个玩家的叫分 [玩家, 电脑1, 电脑2]，-1表示未叫分
-  const [consecutivePasses, setConsecutivePasses] = useState(0); // 连续不叫次数
-  const [lastBidder, setLastBidder] = useState(-1); // 上一个叫分的玩家
+  const [biddingConsecutivePasses, setBiddingConsecutivePasses] = useState(0); // 叫分阶段连续不叫次数
+  const [lastBidderForBidding, setLastBidderForBidding] = useState(-1); // 叫分阶段上一个叫分的玩家
+  const [computerBiddingInProgress, setComputerBiddingInProgress] = useState(false); // 电脑叫分进行中，防止重复执行
   const [totalScore, setTotalScore] = useState(0); // 玩家总分
 
   // 加载和保存总分
@@ -760,23 +762,27 @@ export default function App() {
 
   // 头像组件
   const PlayerAvatar = ({ playerIndex, size = 40, showLabel = false }) => {
-    let backgroundColor, label;
+    let backgroundColor, borderColor, label;
 
     switch(playerIndex) {
       case 0: // 玩家
-        backgroundColor = '#4CAF50'; // 绿色
+        backgroundColor = '#E91E63'; // 绛紫色
+        borderColor = '#C2185B'; // 深一点的绛紫
         label = '您';
         break;
       case 1: // 电脑1
         backgroundColor = '#2196F3'; // 蓝色
+        borderColor = '#1976D2'; // 深一点的蓝
         label = '1';
         break;
       case 2: // 电脑2
         backgroundColor = '#FF9800'; // 橙色
+        borderColor = '#F57C00'; // 深一点的橙
         label = '2';
         break;
       default:
         backgroundColor = '#9E9E9E'; // 灰色
+        borderColor = '#757575'; // 深一点的灰
         label = '?';
     }
 
@@ -789,9 +795,14 @@ export default function App() {
           backgroundColor,
           justifyContent: 'center',
           alignItems: 'center',
-          borderWidth: 2,
-          borderColor: '#fff',
-          marginRight: 8
+          borderWidth: 3,
+          borderColor: borderColor,
+          marginRight: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          elevation: 5,
         }
       ]}>
         <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: size * 0.4 }}>
@@ -838,8 +849,9 @@ export default function App() {
       const firstBidder = Math.floor(Math.random() * 3);
       setBidder(firstBidder); // 随机选择先叫地主的玩家
       setBids([-1, -1, -1]);
-      setConsecutivePasses(0); // 重置连续不叫次数
-      setLastBidder(-1); // 重置上一个叫分的玩家
+      setBiddingConsecutivePasses(0); // 重置连续不叫次数
+      setLastBidderForBidding(-1); // 重置上一个叫分的玩家
+      setComputerBiddingInProgress(false); // 重置电脑叫分进行中状态
       setGamePhase('bidding');
       setGameState('playing'); // 现在开始游戏，但处于叫地主阶段
     } else if (gameMode === 'classic') {
@@ -908,9 +920,9 @@ export default function App() {
         }
 
         let bid = 0;
-        if (strength >= 6) bid = 3;
-        else if (strength >= 4) bid = 2;
-        else if (strength >= 2) bid = 1;
+        if (strength >= 6 && highestBid < 3) bid = 3;
+        else if (strength >= 4 && highestBid < 2) bid = 2;
+        else if (strength >= 2 && highestBid < 1) bid = 1;
         else bid = 0;
 
         bidLandlord(bid);
@@ -934,8 +946,9 @@ export default function App() {
       const firstBidder = Math.floor(Math.random() * 3);
       setBidder(firstBidder); // 随机选择先叫地主的玩家
       setBids([-1, -1, -1]);
-      setConsecutivePasses(0); // 重置连续不叫次数
-      setLastBidder(-1); // 重置上一个叫分的玩家
+      setBiddingConsecutivePasses(0); // 重置连续不叫次数
+      setLastBidderForBidding(-1); // 重置上一个叫分的玩家
+      setComputerBiddingInProgress(false); // 重置电脑叫分进行中状态
       setGamePhase('bidding');
       setGameState('playing'); // 现在开始游戏，但处于叫地主阶段
     }
@@ -968,31 +981,96 @@ export default function App() {
     newBids[0] = bid;
     setBids(newBids);
 
+    // 不要立即更新状态，而是使用临时变量在后面统一处理
+    // 这样可以确保状态更新的一致性
+
+    setGameLog(prev => [...prev, `您叫了${bid === 0 ? '不叫' : bid + '分'}`]);
+
+    // 使用临时变量来跟踪更新后的状态
+    let newBiddingConsecutivePasses = biddingConsecutivePasses;
+    let newLastBidderForBidding = lastBidderForBidding;
+
+    // 更新叫分状态
     if (bid > highestBid) {
       setHighestBid(bid);
       setLandlord(0); // 暂时设定玩家为地主，如果没人更高分则最终确定
-      setLastBidder(0); // 记录上一个叫分的玩家
-      setConsecutivePasses(0); // 重置连续不叫次数
+      newLastBidderForBidding = 0; // 记录玩家是上一个叫分的玩家
+      newBiddingConsecutivePasses = 0; // 重置连续不叫次数
     } else if (bid === 0) {
       // 玩家不叫
-      setConsecutivePasses(prev => prev + 1);
+      newBiddingConsecutivePasses = biddingConsecutivePasses + 1;
     } else {
-      // 玩家叫了分但不是最高分
-      setLastBidder(0); // 记录上一个叫分的玩家
-      setConsecutivePasses(1); // 重置连续不叫次数为1
+      // 玩家叫了分但不是最高分（这种情况应该被视为不叫，增加连续不叫次数）
+      newBiddingConsecutivePasses = biddingConsecutivePasses + 1;
     }
-
-    setGameLog(prev => [...prev, `您叫了${bid === 0 ? '不叫' : bid + '分'}`]);
 
     // 检查是否应该结束叫地主
     if (bid === 3) {
       // 玩家叫了3分，直接结束叫地主
       setGamePhase('playing');
       setCurrentPlayer(0); // 玩家先出牌
-      setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
-      setPendingBottom({ owner: 0, cards: bottomCards });
+      setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`, `游戏开始！地主是您`]);
+      setPendingBottom({ owner: 0, cards: [...bottomCards] });
       setBottomInserted(false);
       setBottomCards([]);
+      // 重置电脑叫分进行中标记
+      setComputerBiddingInProgress(false);
+    } else if (newBiddingConsecutivePasses >= 2) {
+      if (newLastBidderForBidding !== -1) {
+        // 连续两个不叫，上一个叫分的玩家成为地主
+        setLandlord(newLastBidderForBidding);
+        setGamePhase('playing');
+        setCurrentPlayer(newLastBidderForBidding);
+
+        if (newLastBidderForBidding === 0) {
+          // 玩家成为地主
+          setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`, `游戏开始！地主是您`]);
+          setPendingBottom({ owner: 0, cards: [...bottomCards] });
+          setBottomInserted(false);
+        } else {
+          // 电脑成为地主
+          let newComputerHand = newLastBidderForBidding === 1 ? [...computer1Hand] : [...computer2Hand];
+          newComputerHand = [...newComputerHand, ...bottomCards].sort(compareCardValues);
+          if (newLastBidderForBidding === 1) {
+            setComputer1Hand([...newComputerHand]);
+          } else {
+            setComputer2Hand([...newComputerHand]);
+          }
+          setGameLog(prev => [...prev, `电脑${newLastBidderForBidding}成为地主，获得底牌！`, `游戏开始！地主是电脑${newLastBidderForBidding}`]);
+        }
+        setBottomCards([]);
+        // 重置电脑叫分进行中标记
+        setComputerBiddingInProgress(false);
+      } else {
+        // 没有人叫分，随机选择一个玩家成为地主
+        const randomLandlord = Math.floor(Math.random() * 3);
+        setLandlord(randomLandlord);
+        setGamePhase('playing');
+        setCurrentPlayer(randomLandlord);
+
+        if (randomLandlord === 0) {
+          // 玩家成为地主
+          setGameLog(prev => [...prev, `所有玩家都不叫地主，随机选择地主中...您成为地主，获得底牌！`, `游戏开始！地主是您`]);
+          setPendingBottom({ owner: 0, cards: [...bottomCards] });
+          setBottomInserted(false);
+        } else {
+          // 电脑成为地主
+          let newComputerHand = randomLandlord === 1 ? [...computer1Hand] : [...computer2Hand];
+          newComputerHand = [...newComputerHand, ...bottomCards].sort(compareCardValues);
+          if (randomLandlord === 1) {
+            setComputer1Hand([...newComputerHand]);
+          } else {
+            setComputer2Hand([...newComputerHand]);
+          }
+          setGameLog(prev => [...prev, `所有玩家都不叫地主，随机选择地主中...电脑${randomLandlord}成为地主，获得底牌！`, `游戏开始！地主是电脑${randomLandlord}`]);
+        }
+        setBottomCards([]);
+        // 重置叫分相关状态，确保不会出现状态冲突
+        setBiddingConsecutivePasses(0);
+        setLastBidderForBidding(-1);
+        // 重置电脑叫分进行中标记
+        setComputerBiddingInProgress(false);
+      }
     } else {
       // 轮到下一个玩家
       setBidder(prev => (prev + 1) % 3);
@@ -1010,201 +1088,309 @@ export default function App() {
     newBids[0] = 0; // 不叫
     setBids(newBids);
 
-    // 更新连续不叫次数
-    setConsecutivePasses(prev => prev + 1);
+    // 检查是否连续两个不叫（在更新当前不叫之前）
+    const newConsecutivePasses = biddingConsecutivePasses + 1;
+    setBiddingConsecutivePasses(newConsecutivePasses);
+    if (newConsecutivePasses >= 2) {
+      if (lastBidderForBidding !== -1) {
+        // 连续两个不叫，上一个叫分的玩家成为地主
+        setLandlord(lastBidderForBidding);
+        setGamePhase('playing');
+        setCurrentPlayer(lastBidderForBidding);
 
-    // 检查是否连续两个不叫
-    if (consecutivePasses + 1 >= 2 && lastBidder !== -1) {
-      // 连续两个不叫，上一个叫分的玩家成为地主
-      setLandlord(lastBidder);
-      setGamePhase('playing');
-      setCurrentPlayer(lastBidder);
-
-      if (lastBidder === 0) {
-        // 玩家成为地主
-        setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
-        setPendingBottom({ owner: 0, cards: bottomCards });
-        setBottomInserted(false);
-      } else {
-        // 电脑成为地主
-        let newComputerHand = lastBidder === 1 ? [...computer1Hand] : [...computer2Hand];
-        newComputerHand = [...newComputerHand, ...bottomCards].sort(compareCardValues);
-        if (lastBidder === 1) {
-          setComputer1Hand(newComputerHand);
+        if (lastBidderForBidding === 0) {
+          // 玩家成为地主
+          setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`, `游戏开始！地主是您`]);
+          setPendingBottom({ owner: 0, cards: bottomCards });
+          setBottomInserted(false);
         } else {
-          setComputer2Hand(newComputerHand);
+          // 电脑成为地主
+          let newComputerHand = lastBidderForBidding === 1 ? [...computer1Hand] : [...computer2Hand];
+          newComputerHand = [...newComputerHand, ...bottomCards].sort(compareCardValues);
+          if (lastBidderForBidding === 1) {
+            setComputer1Hand(newComputerHand);
+          } else {
+            setComputer2Hand(newComputerHand);
+          }
+          setGameLog(prev => [...prev, `电脑${lastBidderForBidding}成为地主，获得底牌！`, `游戏开始！地主是电脑${lastBidderForBidding}`]);
         }
-        setGameLog(prev => [...prev, `电脑${lastBidder}成为地主，获得底牌！`]);
+        setBottomCards([]);
+        // 重置电脑叫分进行中标记
+        setComputerBiddingInProgress(false);
+      } else {
+        // 没有人叫分，随机选择一个玩家成为地主
+        const randomLandlord = Math.floor(Math.random() * 3);
+        setLandlord(randomLandlord);
+        setGamePhase('playing');
+        setCurrentPlayer(randomLandlord);
+
+        if (randomLandlord === 0) {
+          // 玩家成为地主
+          setGameLog(prev => [...prev, `所有玩家都不叫地主，随机选择地主中...您成为地主，获得底牌！`, `游戏开始！地主是您`]);
+          setPendingBottom({ owner: 0, cards: bottomCards });
+          setBottomInserted(false);
+        } else {
+          // 电脑成为地主
+          let newComputerHand = randomLandlord === 1 ? [...computer1Hand] : [...computer2Hand];
+          newComputerHand = [...newComputerHand, ...bottomCards].sort(compareCardValues);
+          if (randomLandlord === 1) {
+            setComputer1Hand(newComputerHand);
+          } else {
+            setComputer2Hand(newComputerHand);
+          }
+          setGameLog(prev => [...prev, `所有玩家都不叫地主，随机选择地主中...电脑${randomLandlord}成为地主，获得底牌！`, `游戏开始！地主是电脑${randomLandlord}`]);
+        }
+        setBottomCards([]);
+        // 重置叫分相关状态，确保不会出现状态冲突
+        setBiddingConsecutivePasses(0);
+        setLastBidderForBidding(-1);
+        // 重置电脑叫分进行中标记
+        setComputerBiddingInProgress(false);
       }
-      setBottomCards([]);
     } else {
       // 轮到下一个玩家
       setBidder(prev => (prev + 1) % 3);
+      // 重置电脑叫分进行中标记
+      setComputerBiddingInProgress(false);
     }
   };
 
   // 电脑叫地主
   useEffect(() => {
-    if (gamePhase === 'bidding' && bidder !== 0 && landlord === -1) {
-      const timer = setTimeout(() => {
-        const computerIndex = bidder;
-        let computerHand;
+    if (gamePhase === 'bidding' && bidder !== 0 && landlord === -1 && !computerBiddingInProgress) {
+      // 设置电脑叫分进行中标记，防止重复执行
+      setComputerBiddingInProgress(true);
 
-        switch(computerIndex) {
-          case 1:
-            computerHand = computer1Hand;
-            break;
-          case 2:
-            computerHand = computer2Hand;
-            break;
-          default:
+      // 使用异步函数和延迟来模拟"思考"效果，同时保持逻辑同步
+      (async () => {
+        // 模拟电脑思考时间
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // 检查在此期间状态是否发生变化
+        if (gamePhase !== 'bidding' || bidder === 0 || landlord !== -1 || computerBiddingInProgress) {
+          // 如果状态不再满足条件，直接重置标记并返回
+          setComputerBiddingInProgress(false);
+          return;
+        }
+
+        try {
+          const computerIndex = bidder;
+          let computerHand;
+
+          switch(computerIndex) {
+            case 1:
+              computerHand = computer1Hand;
+              break;
+            case 2:
+              computerHand = computer2Hand;
+              break;
+            default:
+              // 重置电脑叫分进行中标记并返回
+              setComputerBiddingInProgress(false);
+              return;
+          }
+
+          // 检查电脑手牌是否已加载且格式正确
+          if (!computerHand || !Array.isArray(computerHand) || computerHand.length === 0) {
+            console.log(`电脑${computerIndex}手牌未加载或格式不正确，跳过叫分`);
+            // 重置标记，允许后续重试
+            setComputerBiddingInProgress(false);
+            // 轮到下一个玩家
+            setBidder(prev => (prev + 1) % 3);
             return;
-        }
+          }
 
-        // 简单的AI叫地主逻辑：根据手牌强度决定叫分
-        let bid = 0;
+          // 简单的AI叫地主逻辑：根据手牌强度决定叫分
+          let bid = 0;
 
-        // 计算手牌强度（简单算法：统计对子、三张、炸弹等）
-        const valueCounts = {};
-        computerHand.forEach(card => {
-          valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
-        });
+          try {
+            // 计算手牌强度（简单算法：统计对子、三张、炸弹等）
+            const valueCounts = {};
+            (computerHand || []).forEach(card => {
+              if (card && card.value) {
+                valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
+              }
+            });
 
-        let strength = 0;
-        Object.values(valueCounts).forEach(count => {
-          if (count === 2) strength += 1; // 对子
-          else if (count === 3) strength += 2; // 三张
-          else if (count === 4) strength += 4; // 炸弹
-        });
+            let strength = 0;
+            Object.values(valueCounts).forEach(count => {
+              if (count === 2) strength += 1; // 对子
+              else if (count === 3) strength += 2; // 三张
+              else if (count === 4) strength += 4; // 炸弹
+            });
 
-        // 如果有王炸，增加强度
-        const hasJokers = computerHand.some(c => c.type === 'joker');
-        if (hasJokers) {
-          const jokerCount = computerHand.filter(c => c.type === 'joker').length;
-          if (jokerCount === 2) strength += 5; // 王炸
-        }
+            // 如果有王炸，增加强度
+            const jokers = (computerHand || []).filter(c => c && c.type === 'joker');
+            if (jokers.length === 2) strength += 5; // 王炸
 
-        // 根据强度决定叫分
-        if (strength >= 6) bid = 3;
-        else if (strength >= 4) bid = 2;
-        else if (strength >= 2) bid = 1;
-        else bid = 0;
+            // 根据强度决定叫分，但必须高于当前最高分
+            if (strength >= 6 && highestBid < 3) bid = 3;
+            else if (strength >= 4 && highestBid < 2) bid = 2;
+            else if (strength >= 2 && highestBid < 1) bid = 1;
+            else bid = 0;
 
-        // 如果当前最高分已经是3分，就不再叫
-        if (highestBid === 3) bid = 0;
+            // 如果当前最高分已经是3分，就不再叫
+            if (highestBid === 3) bid = 0;
+          } catch (error) {
+            console.error(`电脑${computerIndex}计算叫分时出错:`, error);
+            bid = 0; // 默认不叫
+          }
 
-        // 确保叫分高于当前最高分
-        if (bid <= highestBid) bid = 0;
+          const newBids = [...bids];
+          newBids[computerIndex] = bid;
+          setBids(newBids);
 
-        const newBids = [...bids];
-        newBids[computerIndex] = bid;
-        setBids(newBids);
+          // 注意：这里不立即更新最高分和地主，而是在后续状态更新中处理
+          // 这样可以确保只有真正超过最高分的叫分才会更新地主信息
 
-        if (bid > highestBid) {
-          setHighestBid(bid);
-          setLandlord(computerIndex);
-        }
+          setGameLog(prev => [...prev, `电脑${computerIndex}叫了${bid === 0 ? '不叫' : bid + '分'}`]);
 
-        setGameLog(prev => [...prev, `电脑${computerIndex}叫了${bid === 0 ? '不叫' : bid + '分'}`]);
+          // 使用临时变量来跟踪更新后的状态
+          let newBiddingConsecutivePasses = biddingConsecutivePasses;
+          let newLastBidderForBidding = lastBidderForBidding;
 
-        // 更新叫分状态
-        if (bid > highestBid) {
-          setHighestBid(bid);
-          setLandlord(computerIndex); // 暂时设定为地主
-          setLastBidder(computerIndex); // 记录上一个叫分的玩家
-          setConsecutivePasses(0); // 重置连续不叫次数
-        } else if (bid === 0) {
-          // 电脑不叫
-          setConsecutivePasses(prev => prev + 1);
-        } else {
-          // 电脑叫了分但不是最高分
-          setLastBidder(computerIndex); // 记录上一个叫分的玩家
-          setConsecutivePasses(1); // 重置连续不叫次数为1
-        }
+          // 更新叫分状态
+          if (bid > highestBid) {
+            setHighestBid(bid);
+            setLandlord(computerIndex); // 暂时设定为地主
+            newLastBidderForBidding = computerIndex; // 记录上一个叫分的玩家
+            setLastBidderForBidding(computerIndex);
+            newBiddingConsecutivePasses = 0; // 重置连续不叫次数
+            setBiddingConsecutivePasses(0);
+          } else if (bid === 0) {
+            // 电脑不叫
+            newBiddingConsecutivePasses = biddingConsecutivePasses + 1;
+            setBiddingConsecutivePasses(prev => prev + 1);
+          } else {
+            // 电脑叫了分但不是最高分（这种情况应该被视为不叫，增加连续不叫次数）
+            newBiddingConsecutivePasses = biddingConsecutivePasses + 1;
+            setBiddingConsecutivePasses(prev => prev + 1);
+          }
 
-        // 检查是否应该结束叫地主
-        if (bid === 3) {
-          // 有人叫了3分，直接结束
-          if (landlord !== -1) {
-            // 给地主底牌
-            let newPlayerHand = [...playerHand];
-            let newComputer1Hand = [...computer1Hand];
-            let newComputer2Hand = [...computer2Hand];
+          // 检查是否应该结束叫地主
+          if (bid === 3) {
+            // 有人叫了3分，直接结束
+            // 使用当前电脑作为地主，因为bid > highestBid时已经设置了地主
+            if (bid > highestBid) { // 确保当前电脑确实叫了3分并成为了地主
+              // 给地主底牌
+              let newPlayerHand = [...playerHand];
+              let newComputer1Hand = [...computer1Hand];
+              let newComputer2Hand = [...computer2Hand];
 
-            switch(landlord) {
-              case 0: // 玩家是地主
-                // 玩家成为地主：先展示为待确认底牌，让玩家查看后确认插入
-                setPendingBottom({ owner: 0, cards: bottomCards });
-                setBottomInserted(false);
-                setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
-                setGamePhase('playing');
-                setCurrentPlayer(0); // 玩家先出牌
-                setGameLog(prev => [...prev, `游戏开始！地主是您`]);
-                break;
-              case 1: // 电脑1是地主
-                newComputer1Hand = [...computer1Hand, ...bottomCards].sort(compareCardValues);
-                setGameLog(prev => [...prev, `电脑1成为地主，获得底牌！`]);
-                setGamePhase('playing');
-                setCurrentPlayer(1); // 电脑1先出牌
-                setGameLog(prev => [...prev, `游戏开始！地主是电脑1`]);
-                break;
-              case 2: // 电脑2是地主
-                newComputer2Hand = [...computer2Hand, ...bottomCards].sort(compareCardValues);
-                setGameLog(prev => [...prev, `电脑2成为地主，获得底牌！`]);
-                setGamePhase('playing');
-                setCurrentPlayer(2); // 电脑2先出牌
-                setGameLog(prev => [...prev, `游戏开始！地主是电脑2`]);
-                break;
+              switch(computerIndex) {
+                case 0: // 玩家是地主
+                  // 玩家成为地主：先展示为待确认底牌，让玩家查看后确认插入
+                  setPendingBottom({ owner: 0, cards: [...bottomCards] });
+                  setBottomInserted(false);
+                  setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`, `游戏开始！地主是您`]);
+                  setGamePhase('playing');
+                  setCurrentPlayer(0); // 玩家先出牌
+                  break;
+                case 1: // 电脑1是地主
+                  newComputer1Hand = [...computer1Hand, ...bottomCards].sort(compareCardValues);
+                  setGameLog(prev => [...prev, `电脑1成为地主，获得底牌！`, `游戏开始！地主是电脑1`]);
+                  setGamePhase('playing');
+                  setCurrentPlayer(1); // 电脑1先出牌
+                  break;
+                case 2: // 电脑2是地主
+                  newComputer2Hand = [...computer2Hand, ...bottomCards].sort(compareCardValues);
+                  setGameLog(prev => [...prev, `电脑2成为地主，获得底牌！`, `游戏开始！地主是电脑2`]);
+                  setGamePhase('playing');
+                  setCurrentPlayer(2); // 电脑2先出牌
+                  break;
+              }
+
+              if (computerIndex !== 0) { // 如果不是玩家成为地主，则更新手牌
+                setPlayerHand([...newPlayerHand]);
+                setComputer1Hand([...newComputer1Hand]);
+                setComputer2Hand([...newComputer2Hand]);
+                setBottomCards([]);
+              }
             }
+          } else if (newBiddingConsecutivePasses >= 2) {
+            if (newLastBidderForBidding !== -1) {
+              // 连续两个不叫，上一个叫分的玩家成为地主
+              setLandlord(newLastBidderForBidding);
+              setGamePhase('playing');
+              setCurrentPlayer(newLastBidderForBidding);
 
-            if (landlord !== 0) { // 如果不是玩家成为地主，则更新手牌
-              setPlayerHand(newPlayerHand);
-              setComputer1Hand(newComputer1Hand);
-              setComputer2Hand(newComputer2Hand);
-              setBottomCards([]);
+              let newPlayerHand = [...playerHand];
+              let newComputer1Hand = [...computer1Hand];
+              let newComputer2Hand = [...computer2Hand];
+
+              switch(newLastBidderForBidding) {
+                case 0: // 玩家是地主
+                  setPendingBottom({ owner: 0, cards: [...bottomCards] });
+                  setBottomInserted(false);
+                  setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`, `游戏开始！地主是您`]);
+                  break;
+                case 1: // 电脑1是地主
+                  newComputer1Hand = [...computer1Hand, ...bottomCards].sort(compareCardValues);
+                  setGameLog(prev => [...prev, `电脑1成为地主，获得底牌！`, `游戏开始！地主是电脑1`]);
+                  break;
+                case 2: // 电脑2是地主
+                  newComputer2Hand = [...computer2Hand, ...bottomCards].sort(compareCardValues);
+                  setGameLog(prev => [...prev, `电脑2成为地主，获得底牌！`, `游戏开始！地主是电脑2`]);
+                  break;
+              }
+
+              if (newLastBidderForBidding !== 0) { // 如果不是玩家成为地主，则更新手牌
+                setPlayerHand(newPlayerHand);
+                setComputer1Hand(newComputer1Hand);
+                setComputer2Hand(newComputer2Hand);
+                setBottomCards([]);
+              }
+            } else {
+              // 没有人叫分，随机选择一个玩家成为地主
+              const randomLandlord = Math.floor(Math.random() * 3);
+              setLandlord(randomLandlord);
+              setGamePhase('playing');
+              setCurrentPlayer(randomLandlord);
+
+              let newPlayerHand = [...playerHand];
+              let newComputer1Hand = [...computer1Hand];
+              let newComputer2Hand = [...computer2Hand];
+
+              switch(randomLandlord) {
+                case 0: // 玩家是地主
+                  setPendingBottom({ owner: 0, cards: [...bottomCards] });
+                  setBottomInserted(false);
+                  setGameLog(prev => [...prev, `所有玩家都不叫地主，随机选择地主中...您成为地主，获得底牌！`, `游戏开始！地主是您`]);
+                  break;
+                case 1: // 电脑1是地主
+                  newComputer1Hand = [...computer1Hand, ...bottomCards].sort(compareCardValues);
+                  setGameLog(prev => [...prev, `所有玩家都不叫地主，随机选择地主中...电脑1成为地主，获得底牌！`, `游戏开始！地主是电脑1`]);
+                  break;
+                case 2: // 电脑2是地主
+                  newComputer2Hand = [...computer2Hand, ...bottomCards].sort(compareCardValues);
+                  setGameLog(prev => [...prev, `所有玩家都不叫地主，随机选择地主中...电脑2成为地主，获得底牌！`, `游戏开始！地主是电脑2`]);
+                  break;
+              }
+
+              if (randomLandlord !== 0) { // 如果不是玩家成为地主，则更新手牌
+                setPlayerHand(newPlayerHand);
+                setComputer1Hand(newComputer1Hand);
+                setComputer2Hand(newComputer2Hand);
+                setBottomCards([]);
+              }
+
+              // 重置叫分相关状态，确保不会出现状态冲突
+              setBiddingConsecutivePasses(0);
+              setLastBidderForBidding(-1);
             }
+          } else {
+            // 轮到下一个玩家
+            setBidder(prev => (prev + 1) % 3);
           }
-        } else if (consecutivePasses >= 2 && lastBidder !== -1) {
-          // 连续两个不叫，上一个叫分的玩家成为地主
-          setLandlord(lastBidder);
-          setGamePhase('playing');
-          setCurrentPlayer(lastBidder);
-
-          let newPlayerHand = [...playerHand];
-          let newComputer1Hand = [...computer1Hand];
-          let newComputer2Hand = [...computer2Hand];
-
-          switch(lastBidder) {
-            case 0: // 玩家是地主
-              setPendingBottom({ owner: 0, cards: bottomCards });
-              setBottomInserted(false);
-              setGameLog(prev => [...prev, `您成为地主，获得底牌！（请确认收牌）`]);
-              break;
-            case 1: // 电脑1是地主
-              newComputer1Hand = [...computer1Hand, ...bottomCards].sort(compareCardValues);
-              setGameLog(prev => [...prev, `电脑1成为地主，获得底牌！`]);
-              break;
-            case 2: // 电脑2是地主
-              newComputer2Hand = [...computer2Hand, ...bottomCards].sort(compareCardValues);
-              setGameLog(prev => [...prev, `电脑2成为地主，获得底牌！`]);
-              break;
-          }
-
-          if (lastBidder !== 0) { // 如果不是玩家成为地主，则更新手牌
-            setPlayerHand(newPlayerHand);
-            setComputer1Hand(newComputer1Hand);
-            setComputer2Hand(newComputer2Hand);
-            setBottomCards([]);
-          }
-        } else {
-          // 轮到下一个玩家
-          setBidder(prev => (prev + 1) % 3);
+        } catch (error) {
+          console.error('电脑叫分逻辑出错:', error);
+        } finally {
+          // 无论是否出错，都要重置电脑叫分进行中标记
+          setComputerBiddingInProgress(false);
         }
-      }, 1500); // 1.5秒后电脑叫分
-
-      return () => clearTimeout(timer);
+      })();
     }
-  }, [bidder, gamePhase, highestBid, bids]);
+  }, [bidder, gamePhase, highestBid, biddingConsecutivePasses, lastBidderForBidding, landlord, computerBiddingInProgress]);
 
 
 
@@ -1245,34 +1431,36 @@ export default function App() {
   };
 
   // 计算手牌重叠量以保证尽量一屏显示（返回 marginLeft 值，可为负数）
-  // 为老年人优化：使用更保守的重叠策略，避免出牌后布局变化
+  // 为老年人优化：使用更紧凑的重叠策略，确保能显示所有牌
+  // 重叠度：0%表示牌紧贴，负值表示重叠
   const computeOverlap = (count) => {
     const screenWidth = Dimensions.get('window').width;
-    const horizontalPadding = 32; // SafeArea + container padding 估算
-    const containerWidth = Math.max(200, screenWidth - horizontalPadding);
-    const cardWidth = 64; // 增大卡片宽度以适应老年人
+    const horizontalPadding = 4; // 进一步减少边距，让牌能更占满屏幕
+    const containerWidth = screenWidth - horizontalPadding;
+    const cardWidth = 58; // 卡片宽度（与样式中一致）
 
     if (count <= 1) return 0;
 
-    // 使用更保守的重叠策略，确保牌不会太分散
-    // 计算最多能容纳的牌数，以确保所有牌都在屏幕内
-    const maxCardsOnScreen = Math.floor(containerWidth / (cardWidth * 0.6)); // 0.6是重叠比例
-    const effectiveCount = Math.min(count, maxCardsOnScreen);
+    // 为了确保所有牌都在容器内，计算最大允许的间距
+    // 第n张牌的右边界：(n-1) * marginLeft + cardWidth <= containerWidth
+    // 解得：marginLeft <= (containerWidth - cardWidth) / (count - 1)
+    const maxAllowedSpacing = (containerWidth - cardWidth) / (count - 1);
 
-    // 期望每张卡片横向占用的空间（允许为负表示重叠）
-    const idealSpacing = (containerWidth - cardWidth) / (effectiveCount - 1);
+    // 为了确保所有牌都可见，间距不能超过maxAllowedSpacing
+    // 为了保持紧凑，我们希望使用一定的重叠
+    // 根据牌数调整重叠度：17张牌时用67%，20张牌时用72%
+    const overlapPercentage = count >= 20 ? 0.72 : 0.67; // 20张及以上用72%，否则用67%
+    const desiredOverlap = -cardWidth * overlapPercentage;
 
-    // marginLeft = spacing - cardWidth
-    let marginLeft = Math.round(idealSpacing - cardWidth);
-
-    // 限制最大与最小重叠，避免过度重叠或完全分散
-    const maxOverlap = -12; // 增加重叠，使牌更紧凑
-    const minOverlap = -Math.floor(cardWidth * 0.8); // 最多重叠 80%，确保牌可见
-
-    if (marginLeft > maxOverlap) marginLeft = maxOverlap;
-    if (marginLeft < minOverlap) marginLeft = minOverlap;
-
-    return marginLeft;
+    // 如果空间充足，强制使用我们希望的重叠度
+    // 如果空间不足，使用计算出的间距以确保所有牌都可见
+    if (maxAllowedSpacing >= 0) {
+        // 空间充足，强制使用重叠
+        return Math.round(desiredOverlap);
+    } else {
+        // 空间不足，使用计算出的间距（确保所有牌可见）
+        return Math.round(maxAllowedSpacing);
+    }
   };
 
   // 加载并保存 cardOrder 到本地存储
@@ -1373,8 +1561,9 @@ export default function App() {
     setPossiblePlays([]);
 
     // 重置叫地主相关状态
-    setConsecutivePasses(0);
-    setLastBidder(-1);
+    setBiddingConsecutivePasses(0);
+    setLastBidderForBidding(-1);
+    setComputerBiddingInProgress(false);
   };
 
   // 出牌
@@ -1393,22 +1582,22 @@ export default function App() {
       Alert.alert('提示', '无效的牌型');
       return;
     }
-    // 如果不是在接牌（即上一个出牌者不是当前玩家），则需要压过上一手牌
+    // 如果不是���接���（��上一个��牌者不是���前玩家）���则需要压过��一手牌
     if (!(lastPlayer === currentPlayer || lastPlayedCards.length === 0)) {
       if (!canBeat(playedCards, lastPlayedCards)) {
-        Alert.alert('提示', '您出的牌不能压过上一手牌');
+        Alert.alert('提示', '���出的牌不��压过上一手牌');
         return;
       }
     }
 
-    // 标记玩家已出牌
+    // 标��玩家已出牌
     setPlayedAny(prev => {
       const next = [...prev];
       next[0] = true;
       return next;
     });
 
-    // 如果是炸弹或王炸，记录炸弹次数（每次翻倍）
+    // 如果是炸弹或王炸，记录炸弹次数���每次翻倍）
     if (cardType.type === 'bomb' || cardType.type === 'king_bomb') {
       setBombsCount(prev => prev + 1);
     }
@@ -1417,10 +1606,10 @@ export default function App() {
     setPlayerHand(newPlayerHand);
     setLastPlayedCards(playedCards);
     setLastPlayer(0);
-    setConsecutivePasses(0);
+    setBiddingConsecutivePasses(0);
     setSelectedCards([]);
     
-    // 添加游戏日志
+    // �����游戏���志
     const cardNames = playedCards.map(c => c.type === 'joker' ? c.realValue : c.value);
     setGameLog(prev => [...prev, `您出了: ${cardNames.join(', ')}`]);
     
@@ -1430,7 +1619,7 @@ export default function App() {
       return;
     }
     
-    // 轮到下一个玩家
+    // 轮到��一个玩家
     setCurrentPlayer((currentPlayer + 1) % 3);
 
     // 重置提示索引
@@ -1448,7 +1637,7 @@ export default function App() {
     
     setGameLog(prev => [...prev, '您选择过牌']);
     setSelectedCards([]);
-    setConsecutivePasses(prev => {
+    setBiddingConsecutivePasses(prev => {
       const next = prev + 1;
       if (next >= 2) {
         setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
@@ -1469,7 +1658,7 @@ export default function App() {
   // 提示功能
   const showHint = () => {
     if (gameState !== 'playing' || gamePhase !== 'playing' || currentPlayer !== 0) {
-      Alert.alert('提示', '现在不是您的回合');
+      Alert.alert('提示', '现在不是������������的回合');
       return;
     }
 
@@ -1503,7 +1692,7 @@ export default function App() {
     Alert.alert('提示', `第${hintIndex + 1}/${possiblePlays.length}种出牌方式: ${cardNames.join(', ')}`);
   };
 
-  // 电脑玩家出牌
+  // 电脑玩���出牌
   useEffect(() => {
     if (gameState === 'playing' && gamePhase === 'playing' && currentPlayer !== 0) {
       const timer = setTimeout(() => {
@@ -1611,10 +1800,10 @@ export default function App() {
             // 如果还是没有，而上家非过牌且必须接牌，则过牌
             if (!bestPlay && lastPlayer !== -1) {
               // 电脑过牌，检查是否所有其他玩家均过牌
-              setConsecutivePasses(prev => {
+              setBiddingConsecutivePasses(prev => {
                 const next = prev + 1;
                 if (next >= 2) {
-                  setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `��脑${lastPlayer}`} 任意出牌`]);
+                  setGameLog(g => [...g, `所有其他玩家均过牌���轮�� ${lastPlayer === 0 ? '您' : `����脑${lastPlayer}`} 任意���牌`]);
                   setLastPlayedCards([]);
                   setCurrentPlayer(lastPlayer);
                   return 0;
@@ -1643,7 +1832,7 @@ export default function App() {
             
             setLastPlayedCards(bestPlay.cards);
             setLastPlayer(computerIndex);
-            setConsecutivePasses(0);
+            setBiddingConsecutivePasses(0);
 
             // 标记该电脑已出牌
             setPlayedAny(prev => {
@@ -1686,7 +1875,7 @@ export default function App() {
           }
           } else {
           // 电脑过牌（未进入上面分支），也计入连续过牌
-          setConsecutivePasses(prev => {
+          setBiddingConsecutivePasses(prev => {
             const next = prev + 1;
             if (next >= 2) {
               setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
@@ -1707,13 +1896,13 @@ export default function App() {
           return; // 已处理轮转，避免外部重复设置 next player
         }
 
-        // 轮到下一个玩家
+        // 轮到���一��玩家
         setCurrentPlayer((currentPlayer + 1) % 3);
 
         // 重置提示索引
         setHintIndex(0);
         setPossiblePlays([]);
-      }, 2000); // 2秒后电脑出牌
+      }, 2000); // 2秒后电脑��牌
 
       return () => clearTimeout(timer);
     }
@@ -1726,8 +1915,6 @@ export default function App() {
         <StatusBar barStyle="dark-content" />
         <View style={styles.menuContainer}>
           <Text style={styles.title}>老人斗地主</Text>
-          <Text style={styles.subtitle}>纯净版 • 无广告 • 无内购</Text>
-
           <View style={{ alignItems: 'center', marginVertical: 10 }}>
             <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>总分: {totalScore}</Text>
           </View>
@@ -1735,7 +1922,7 @@ export default function App() {
           <TouchableOpacity style={styles.startButton} onPress={startNewGame}>
             <Text style={styles.startButtonText}>开始游戏</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.settingsButton} onPress={() => setShowHowToPlay(true)}>
             <Text style={styles.settingsButtonText}>游戏玩法</Text>
           </TouchableOpacity>
@@ -1768,10 +1955,6 @@ export default function App() {
           }}>
             <Text style={styles.settingsButtonText}>退出游戏</Text>
           </TouchableOpacity>
-
-          <Text style={styles.description}>
-            经典斗地主游戏，专为老人设计\n界面简洁，操作方便
-          </Text>
         </View>
 
         {/* 游戏玩法说明界面 */}
@@ -1883,8 +2066,21 @@ export default function App() {
         <StatusBar barStyle="dark-content" />
         
         <View style={styles.infoBar}>
-          <Text style={styles.infoText}>叫地主阶段</Text>
-          <Text style={styles.infoText}>当前最高分: {highestBid}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {/* 选项按钮 */}
+            <TouchableOpacity
+              style={styles.optionsButtonInInfoBar}
+              onPress={() => setShowOptionsMenu(true)}
+            >
+              <Text style={styles.optionsButtonTextInInfoBar}>选项</Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
+              <Text style={styles.infoText}>叫地主阶段</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.infoText}>当前最高分: {highestBid}</Text>
+          </View>
         </View>
         
         <View style={styles.playersRow}>
@@ -1939,9 +2135,7 @@ export default function App() {
                 const cards = pendingBottom.cards || [];
                 const baseOverlapP = computeOverlap(cards.length);
                 return cards.map((card, idx) => {
-                  const prev = idx > 0 ? cards[idx - 1] : null;
-                  let marginLeftP = idx === 0 ? 0 : baseOverlapP;
-                  if (prev && prev.value === card.value) marginLeftP = Math.floor(baseOverlapP * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
+                  const marginLeftP = idx === 0 ? 0 : baseOverlapP; // 第一张牌不需要特别偏移
                   return (
                     <View key={idx} style={[styles.card, styles.pendingCard, { marginLeft: idx === 0 ? 0 : marginLeftP }]}>
                       <View style={styles.cardCorner}>
@@ -1958,7 +2152,7 @@ export default function App() {
                     </View>
                   );
                 })}
-              ))}
+              )}
               <TouchableOpacity style={styles.confirmButton} onPress={confirmBottomForPlayer}>
                 <Text style={styles.confirmButtonText}>确认收牌</Text>
               </TouchableOpacity>
@@ -1975,11 +2169,7 @@ export default function App() {
               const baseOverlap = computeOverlap(displayed.length);
               return displayed.map((card, displayIndex) => {
                 const realIndex = getRealIndex(displayIndex);
-                const prevCard = displayIndex > 0 ? displayed[displayIndex - 1] : null;
-                let marginLeft = displayIndex === 0 ? 0 : baseOverlap;
-                if (prevCard && prevCard.value === card.value) {
-                  marginLeft = Math.floor(baseOverlap * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
-                }
+                const marginLeft = displayIndex === 0 ? 0 : baseOverlap; // 第一张牌不需要特别偏移
                 return (
                   <View
                     key={displayIndex}
@@ -2024,13 +2214,50 @@ export default function App() {
           </View>
         )}
         
-        {/* 游戏记录按钮 */}
-        <TouchableOpacity 
-          style={styles.logButton} 
-          onPress={() => setShowGameLog(true)}
+        {/* 选项菜单弹窗 */}
+        <Modal
+          visible={showOptionsMenu}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowOptionsMenu(false)}
         >
-          <Text style={styles.logButtonText}>游戏记录</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.optionMenuOverlay}
+            onPress={() => setShowOptionsMenu(false)}
+          >
+            <View style={styles.optionMenuContainer}>
+              <TouchableOpacity
+                style={styles.optionMenuItem}
+                onPress={() => {
+                  setShowGameLog(true);
+                  setShowOptionsMenu(false);
+                }}
+              >
+                <Text style={styles.optionMenuItemText}>游戏记录</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.optionMenuItem}
+                onPress={() => {
+                  Alert.alert(
+                    '退出游戏',
+                    '您确定要退出当前游戏吗？',
+                    [
+                      { text: '取消', style: 'cancel', onPress: () => setShowOptionsMenu(false) },
+                      { text: '确定', onPress: () => {
+                          setGameState('menu');
+                          setShowOptionsMenu(false);
+                        }
+                      }
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.optionMenuItemText}>退出游戏</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
         
         {/* 游戏记录界面 */}
         <Modal
@@ -2088,12 +2315,24 @@ export default function App() {
       {/* 顶部信息栏 */}
       <View style={styles.infoBar}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={styles.infoText}>当前: </Text>
-          <PlayerAvatar playerIndex={currentPlayer} size={25} />
+          {/* 选项按钮 */}
+          <TouchableOpacity
+            style={styles.optionsButtonInInfoBar}
+            onPress={() => setShowOptionsMenu(true)}
+          >
+            <Text style={styles.optionsButtonTextInInfoBar}>选项</Text>
+          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
+            <Text style={styles.infoText}>当前: </Text>
+            <PlayerAvatar playerIndex={currentPlayer} size={25} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
+            <Text style={styles.infoText}>地主: </Text>
+            <PlayerAvatar playerIndex={landlord} size={25} />
+          </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={styles.infoText}>地主: </Text>
-          <PlayerAvatar playerIndex={landlord} size={25} />
+          <Text style={styles.infoText}>最高分: {highestBid}</Text>
         </View>
       </View>
       
@@ -2165,10 +2404,9 @@ export default function App() {
               const baseOverlapP = computeOverlap(cards.length);
               return cards.map((card, idx) => {
                 const prev = idx > 0 ? cards[idx - 1] : null;
-                let marginLeftP = idx === 0 ? 0 : baseOverlapP;
-                if (prev && prev.value === card.value) marginLeftP = Math.floor(baseOverlapP * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
+                const marginLeftP = idx === 0 ? -4 : baseOverlapP; // 第一张牌稍微向左移动，更好地利用空间
                 return (
-                  <View key={idx} style={[styles.card, styles.pendingCard, { marginLeft: idx === 0 ? 0 : marginLeftP }]}>
+                  <View key={idx} style={[styles.card, styles.pendingCard, { marginLeft: idx === 0 ? -4 : marginLeftP }]}> 
                     <View style={styles.cardCorner}>
                       {card.type === 'joker' ? (
                         <Text style={[styles.jokerText, card.realValue && card.realValue.indexOf('大') !== -1 ? styles.jokerRed : styles.jokerBlack]}>J{"\n"}O{"\n"}K{"\n"}E{"\n"}R</Text>
@@ -2192,6 +2430,7 @@ export default function App() {
 
         <ScrollView
           horizontal
+          scrollEnabled={false}
           contentContainerStyle={styles.handScroll}
           showsHorizontalScrollIndicator={false}
         >
@@ -2200,12 +2439,10 @@ export default function App() {
             const baseOverlap = computeOverlap(displayed.length);
             return displayed.map((card, displayIndex) => {
               const realIndex = getRealIndex(displayIndex);
-              const prevCard = displayIndex > 0 ? displayed[displayIndex - 1] : null;
-              let marginLeft = displayIndex === 0 ? 0 : baseOverlap;
-              if (prevCard && prevCard.value === card.value) marginLeft = Math.floor(baseOverlap * 1.1); // 相同点数稍微靠得更紧一些，但不过度重叠
+              const marginLeft = displayIndex === 0 ? 0 : baseOverlap; // 第一张牌不需要特别偏移
               return (
-                <TouchableOpacity 
-                  key={displayIndex} 
+                <TouchableOpacity
+                  key={displayIndex}
                   style={[
                     styles.card,
                     selectedCards.includes(realIndex) && styles.selectedCard,
@@ -2245,13 +2482,50 @@ export default function App() {
         </TouchableOpacity>
       </View>
       
-      {/* 游戏记录按钮 */}
-      <TouchableOpacity 
-        style={styles.logButton} 
-        onPress={() => setShowGameLog(true)}
+      {/* 选项菜单弹窗 */}
+      <Modal
+        visible={showOptionsMenu}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowOptionsMenu(false)}
       >
-        <Text style={styles.logButtonText}>游戏记录</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.optionMenuOverlay}
+          onPress={() => setShowOptionsMenu(false)}
+        >
+          <View style={styles.optionMenuContainer}>
+            <TouchableOpacity
+              style={styles.optionMenuItem}
+              onPress={() => {
+                setShowGameLog(true);
+                setShowOptionsMenu(false);
+              }}
+            >
+              <Text style={styles.optionMenuItemText}>游戏记录</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.optionMenuItem}
+              onPress={() => {
+                Alert.alert(
+                  '退出游戏',
+                  '您确定要退出当前游戏吗？',
+                  [
+                    { text: '取消', style: 'cancel', onPress: () => setShowOptionsMenu(false) },
+                    { text: '确定', onPress: () => {
+                        setGameState('menu');
+                        setShowOptionsMenu(false);
+                      }
+                    }
+                  ]
+                );
+              }}
+            >
+              <Text style={styles.optionMenuItemText}>退出游戏</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
       
       {/* 游戏记录界面 */}
       <Modal
@@ -2293,16 +2567,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: {
-    fontSize: 44,
+    fontSize: 52,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 24,
-    color: '#ccc',
-    marginBottom: 30,
+    marginBottom: 20,
     textAlign: 'center',
   },
   startButton: {
@@ -2333,17 +2601,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
-  description: {
-    fontSize: 22,
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 30,
-  },
   infoBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 15,
+    padding: 12,
     borderRadius: 10,
     marginBottom: 10,
   },
@@ -2361,8 +2624,8 @@ const styles = StyleSheet.create({
   },
   topPlayerSmall: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 15,
-    margin: 8,
+    padding: 12, // 减少内边距
+    margin: 6, // 减少外边距
     borderRadius: 15,
     alignItems: 'center',
     width: '48%',
@@ -2372,6 +2635,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginHorizontal: 8,
     alignItems: 'center',
+    marginTop: 10, // 添加上边距，让出空间给按钮
   },
   playerName: {
     fontSize: 22,
@@ -2386,7 +2650,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 10,
+    marginVertical: 5, // 减少垂直边距
   },
   lastPlayArea: {
     alignItems: 'center',
@@ -2406,7 +2670,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardPlaceholder: {
-    width: 68,
+    width: 64,
     height: 90,
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -2441,8 +2705,9 @@ const styles = StyleSheet.create({
   },
   bottomPlayer: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 15,
-    margin: 8,
+    padding: 10, // 减少内边距
+    marginHorizontal: 4, // 减少水平边距
+    marginVertical: 5, // 减少垂直边距
     borderRadius: 15,
   },
   handContainer: {
@@ -2451,13 +2716,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   card: {
-    width: 64,
-    height: 96,
+    width: 58, // 卡片宽度
+    height: 94, // 卡片高度
     backgroundColor: '#fff',
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    margin: 6,
+    marginHorizontal: 2, // 增加水平边距，让牌更清晰
+    marginVertical: 6, // 增加垂直边距，让牌更清晰
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
@@ -2471,7 +2737,7 @@ const styles = StyleSheet.create({
   cardCorner: {
     position: 'absolute',
     top: 6,
-    left: 3,
+    left: 2,
     alignItems: 'flex-start',
   },
   cardSuitSmall: {
@@ -2480,7 +2746,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   cardValueSmall: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
   },
   jokerText: {
@@ -2501,7 +2767,7 @@ const styles = StyleSheet.create({
   handScroll: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 2, // 进一步减少边距，让牌能更占满屏幕
   },
   pendingBottomRow: {
     flexDirection: 'row',
@@ -2527,16 +2793,17 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    padding: 15,
+    padding: 10, // 减少内边距
     zIndex: 1000,
     elevation: 10,
     position: 'relative',
+    marginTop: 5, // 添加上边距
   },
   biddingButtonContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-around',
-    padding: 15,
+    padding: 10, // 减少内边距
   },
   hintButton: {
     backgroundColor: '#9c27b0',
@@ -2597,18 +2864,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     color: '#fff',
     marginBottom: 35,
-  },
-  logButton: {
-    position: 'absolute',
-    top: 15,
-    right: 15,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    padding: 10,
-    borderRadius: 18,
-  },
-  logButtonText: {
-    color: '#fff',
-    fontSize: 20,
   },
   modalContainer: {
     flex: 1,
@@ -2694,5 +2949,40 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#666',
     lineHeight: 26,
+  },
+  optionsButtonInInfoBar: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 8,
+    borderRadius: 10,
+    marginRight: 10,
+  },
+  optionsButtonTextInInfoBar: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  optionMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optionMenuContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 10,
+    width: '60%',
+    alignItems: 'stretch',
+  },
+  optionMenuItem: {
+    backgroundColor: '#4a90e2',
+    padding: 15,
+    marginVertical: 5,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  optionMenuItemText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
