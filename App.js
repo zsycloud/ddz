@@ -1827,10 +1827,10 @@ export default function App() {
             // 如果还是没有，而上家非过牌且必须接牌，则过牌
             if (!bestPlay && lastPlayer !== -1) {
               // 电脑过牌，检查是否所有其他玩家均过牌
-              setBiddingConsecutivePasses(prev => {
+              setConsecutivePasses(prev => {
                 const next = prev + 1;
                 if (next >= 2) {
-                  setGameLog(g => [...g, `所有其他玩家均过牌���轮�� ${lastPlayer === 0 ? '您' : `����脑${lastPlayer}`} 任意���牌`]);
+                  setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
                   setLastPlayedCards([]);
                   setCurrentPlayer(lastPlayer);
                   return 0;
@@ -1859,7 +1859,7 @@ export default function App() {
             
             setLastPlayedCards(bestPlay.cards);
             setLastPlayer(computerIndex);
-            setBiddingConsecutivePasses(0);
+            setConsecutivePasses(0);
 
             // 标记该电脑已出牌
             setPlayedAny(prev => {
@@ -1902,7 +1902,7 @@ export default function App() {
           }
           } else {
           // 电脑过牌（未进入上面分支），也计入连续过牌
-          setBiddingConsecutivePasses(prev => {
+          setConsecutivePasses(prev => {
             const next = prev + 1;
             if (next >= 2) {
               setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
