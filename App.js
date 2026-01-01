@@ -1692,41 +1692,40 @@ export default function App() {
       Alert.alert('提示', '现在不是������������的回合');
       return;
     }
-    // 重新生成所有可能的出牌选项（使用局部变量以避免 setState 的异步问题）
-    let plays = possiblePlays;
-    if (!plays || plays.length === 0) {
-      plays = generatePossiblePlays(playerHand, lastPlayedCards);
-      setPossiblePlays(plays);
-      setHintIndex(0);
-    }
+    // 每次都重新生成 candidate plays，避免使用过期的索引导致越界或未定义值
+    const plays = generatePossiblePlays(playerHand, lastPlayedCards) || [];
+    setPossiblePlays(plays);
 
     if (!plays || plays.length === 0) {
       Alert.alert('提示', '没有可以出的牌');
       return;
     }
 
-    // 按顺序显示每一种出牌方式，轮流完所有方式后再点一次收回所有选择
-    let localIndex = hintIndex;
-    // 如果刚刚生成了 plays，重置本地索引为 0（避免异步 setState 导致的旧索引问题）
-    if (!possiblePlays || possiblePlays.length === 0) {
-      localIndex = 0;
-    }
+    // 采用本地索引值，避免依赖异步的 state hintIndex
+    let localIndex = hintIndex || 0;
+    if (localIndex >= plays.length) localIndex = 0;
 
     if (localIndex < plays.length) {
-      const currentPlay = plays[localIndex] || [];
+      // 只保留在当前手牌范围内的合法索引，防止越界或 undefined
+      const rawPlay = plays[localIndex] || [];
+      const currentPlay = rawPlay.filter(i => Number.isInteger(i) && i >= 0 && i < playerHand.length);
+
       setSelectedCards(currentPlay);
 
-      // 显示提示信息
+      // 构建更稳健的牌名显示：使用 点数+花色，对于 Joker 使用 realValue；对缺失索引显示占位
       const cardNames = currentPlay.map(i => {
         const card = playerHand[i];
-        return card ? (card.type === 'joker' ? card.realValue : card.value) : '';
+        if (!card) return '??';
+        if (card.type === 'joker') return card.realValue || '王';
+        return `${card.value}${card.suit || ''}`;
       });
+
       Alert.alert('提示', `第${localIndex + 1}/${plays.length}种出牌方式: ${cardNames.join(', ')}`);
 
-      // 递增索引，下一次显示下一种
+      // 更新 hintIndex（下次显示下一种）
       setHintIndex(localIndex + 1);
     } else {
-      // 已经显示完所有出牌方式，收回所有牌并重置
+      // 理论上不会走到这里，但作为兜底逻辑
       setSelectedCards([]);
       setHintIndex(0);
       setPossiblePlays([]);
