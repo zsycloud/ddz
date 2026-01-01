@@ -1529,13 +1529,17 @@ export default function App() {
 
     // 检查是否为春天或反春天
     const isLandlordWinner = winnerIndex === landlord; // 地主获胜
-    const isAllFarmersLocked = landlord !== -1 &&
-      ((landlord === 0 && !playedAny[1] && !playedAny[2]) || // 玩家是地主，两个电脑农民都没出牌
-       (landlord === 1 && !playedAny[0] && !playedAny[2]) || // 电脑1是地主，玩家和电脑2都没出牌
-       (landlord === 2 && !playedAny[0] && !playedAny[1])); // 电脑2是地主，玩家和电脑1都没出牌
+    // 春天：地主获胜且两个农民都没有出过牌
+    const isAllFarmersLocked = landlord !== -1 && (
+      (landlord === 0 && !playedAny[1] && !playedAny[2]) ||
+      (landlord === 1 && !playedAny[0] && !playedAny[2]) ||
+      (landlord === 2 && !playedAny[0] && !playedAny[1])
+    );
+    // 反春天：农民获胜且地主没有出过牌
+    const isLandlordLocked = landlord !== -1 && !playedAny[landlord];
 
-    const isSpring = isLandlordWinner && isAllFarmersLocked; // 春天：地主获胜且农民都没出牌
-    const isAntiSpring = !isLandlordWinner && isAllFarmersLocked; // 反春天：农民获胜且地主没出牌（地主首出牌就失败）
+    const isSpring = isLandlordWinner && isAllFarmersLocked;
+    const isAntiSpring = !isLandlordWinner && isLandlordLocked;
 
     if (isSpring || isAntiSpring) {
       multiplier *= 2; // 春天或反春天翻倍
