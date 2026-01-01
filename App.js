@@ -1449,32 +1449,34 @@ export default function App() {
     // 第n张牌的右边界：(n-1) * marginLeft + cardWidth <= containerWidth
     // 解得：marginLeft <= (containerWidth - cardWidth) / (count - 1)
     const maxAllowedSpacing = (containerWidth - cardWidth) / (count - 1);
+    // 平滑插值参数（可调）：
+    const MIN_OVERLAP = 0.12; // 最小重叠比例（12%）——保证总有一点重叠
+    const MAX_OVERLAP = 0.72; // 最大重叠比例（20张及以上）
+    const MAX_COUNT = 20; // 对应 MAX_OVERLAP
+    const exponent = 0.5; // 使用幂函数（sqrt）使曲线在高牌数处更接近 MAX_OVERLAP
 
-    // 特殊处理：当牌数很多时，强制使用指定重叠比率，确保不启用水平滚动
-    if (count >= 20) {
-      const overlapPercentage = 0.72; // 20张及以上使用72%
-      return -Math.round(cardWidth * overlapPercentage);
-    }
-    if (count >= 17) {
-      const overlapPercentage = 0.68; // 17张时使用68%
-      return -Math.round(cardWidth * overlapPercentage);
-    }
+    // 计算基于牌数的目标重叠比例（0..1），使用归一化并应用幂函数
+    const t = Math.max(0, Math.min(1, (count - 1) / (MAX_COUNT - 1)));
+    let targetOverlap = MIN_OVERLAP + (MAX_OVERLAP - MIN_OVERLAP) * Math.pow(t, exponent);
 
-    // 如果空间充足（间距为非负），使用允许的最大间距以减少重叠
-    if (maxAllowedSpacing >= 0) {
+    // 对于极端点（明确要求）：在 17 张附近接近 0.68，我们通过上面的参数已能达到接近值
+    // 现在根据容器可用空间，调整真实重叠以确保卡片能放下
+
+    // 若空间充足（允许非重叠或正间距），优先使用允许的最大间距以减少重叠
+    if (maxAllowedSpacing >= cardWidth * (1 - targetOverlap)) {
+      // 可以使用目标偏移或更大间距（减少重叠）
       return Math.floor(Math.min(maxAllowedSpacing, cardWidth));
     }
 
-    // 空间不足，需要重叠。根据牌数动态调整重叠率：牌越多，重叠越大
-    let overlapPercentage;
-    if (count >= 14) overlapPercentage = 0.5;
-    else if (count >= 12) overlapPercentage = 0.35;
-    else overlapPercentage = 0.15; // 较少时仅轻微重叠
+    // 计算为了适配容器所需的最小重叠比例
+    const requiredOverlapToFit = 1 - (maxAllowedSpacing / cardWidth);
 
-    const desiredOverlap = -Math.round(cardWidth * overlapPercentage);
+    // 最终重叠比例至少为 targetOverlap，但如果空间不足需要增加到 requiredOverlapToFit
+    const finalOverlap = Math.max(targetOverlap, requiredOverlapToFit);
+    const clampedOverlap = Math.min(finalOverlap, MAX_OVERLAP);
 
-    // 确保不会超出最大允许的间距（maxAllowedSpacing 为负，表示允许的最大重叠）
-    return Math.round(Math.max(desiredOverlap, maxAllowedSpacing));
+    // 返回负的 marginLeft（重叠）或在极端情况下接近 -cardWidth*MAX_OVERLAP
+    return -Math.round(cardWidth * clampedOverlap);
   };
 
   // 加载并保存 cardOrder 到本地存储
