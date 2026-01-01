@@ -739,6 +739,7 @@ export default function App() {
   const [showGameModeSelection, setShowGameModeSelection] = useState(false); // 游戏模式选择界面
   const [landlord, setLandlord] = useState(-1); // 地主 (-1: 未确定, 0,1,2: 地主)
   const [landlordPlayCount, setLandlordPlayCount] = useState(0); // 地主已出牌手数（用于反春判定）
+  const [playerSkill, setPlayerSkill] = useState(0.5); // 玩家技能估计（0..1），AI 根据此调整强度以匹配玩家
   const [highestBid, setHighestBid] = useState(0); // 最高叫分
   const [bidder, setBidder] = useState(-1); // 当前叫分者
   const [bids, setBids] = useState([-1, -1, -1]); // 每个玩家的叫分 [玩家, 电脑1, 电脑2]，-1表示未叫分
@@ -1525,6 +1526,134 @@ export default function App() {
     setSelectedCards(newSelected);
   };
 
+  // --- AI 辅助函数：评估和选择电脑出牌 ---
+  const getCardsByIndices = (hand, indices) => indices.map(i => hand[i]);
+
+  const maxCardRankIn = (cards) => {
+    if (!cards || cards.length === 0) return -1;
+    return Math.max(...cards.map(c => cardRank(c)));
+  };
+
+  const evaluatePlay = (hand, indices, computerIndex) => {
+    const cards = getCardsByIndices(hand, indices);
+    const type = getCardType(cards);
+    let score = 0;
+
+    if (!type.valid) return -9999;
+
+    // 胜利倾向（将牌打完）优先
+    if (indices.length === hand.length) score += 2000;
+
+    // 炸弹/王炸高分
+    if (type.type === 'king_bomb') score += 1200;
+    if (type.type === 'bomb') score += 900 + (type.value || 0);
+
+    // 根据类型赋予基础权重
+    const typeWeights = {
+      single: 10,
+      pair: 25,
+      triple: 40,
+      triple_with_single: 45,
+      triple_with_pair: 50,
+      straight: 30 + Math.min(20, cards.length),
+      chain_pairs: 40,
+      plane: 60,
+      plane_with_single: 65,
+      plane_with_pair: 70,
+      four_with_two: 80,
+    };
+
+    score += typeWeights[type.type] || 5;
+
+    // 大小（尽量用小牌），因此牌越大得分越低（避免浪费）
+    const maxRank = maxCardRankIn(cards);
+    score -= maxRank * 2;
+
+    // 更长的组合（出更多牌）通常更有价值
+    score += indices.length * 3;
+
+    return score;
+  };
+
+  const findSmallestBeatingPlay = (plays, hand, lastPlayedCards) => {
+    let best = null;
+    let bestMax = Infinity;
+    for (const p of plays) {
+      const cards = getCardsByIndices(hand, p);
+      if (canBeat(cards, lastPlayedCards)) {
+        const m = maxCardRankIn(cards);
+        if (m < bestMax) {
+          bestMax = m;
+          best = { indices: p, cards };
+        }
+      }
+    }
+    return best;
+  };
+
+  const chooseComputerMove = (computerIndex, computerHand, lastPlayedCards, lastPlayer) => {
+    if (!computerHand || computerHand.length === 0) return null;
+
+    // AI 强度由玩家技能驱动，略加随机性
+    let aiSkill = playerSkill + (Math.random() - 0.5) * 0.2;
+    aiSkill = Math.max(0.1, Math.min(0.95, aiSkill));
+
+    // 生成所有可能的候选出牌
+    const plays = generatePossiblePlays(computerHand, lastPlayedCards) || [];
+    if (!plays || plays.length === 0) return null;
+
+    // 农民配合策略：如果上家是另一农民且上家出牌，优先考虑小幅压制（配合）或让出
+    const isLandlord = computerIndex === landlord;
+    const teammate = [0,1,2].find(i => i !== computerIndex && i !== landlord);
+    if (!isLandlord && lastPlayer === teammate && lastPlayedCards.length > 0) {
+      // 如果可以压过对方出牌，技能较高时配合压制（选择最小能压过的牌），否则选择过
+      const coop = findSmallestBeatingPlay(plays, computerHand, lastPlayedCards);
+      if (coop) {
+        if (aiSkill >= 0.5) return coop; // 合作：出最小能压过的牌
+        return null; // 放弃，让队友接着出
+      } else {
+        return null; // 不能压过，选择放过
+      }
+    }
+
+    // 评分并排序候选牌
+    const scored = plays.map(p => ({ indices: p, score: evaluatePlay(computerHand, p, computerIndex) }));
+    scored.sort((a,b) => b.score - a.score);
+
+    // 如果需要压过上一手牌，先筛选能压过的牌
+    if (lastPlayedCards.length > 0 && lastPlayer !== computerIndex) {
+      const beating = scored.filter(s => {
+        const cards = getCardsByIndices(computerHand, s.indices);
+        return canBeat(cards, lastPlayedCards);
+      });
+      if (beating.length === 0) {
+        // 尝试炸弹
+        const bombs = scored.filter(s => {
+          const cards = getCardsByIndices(computerHand, s.indices);
+          const t = getCardType(cards);
+          return t.type === 'bomb' || t.type === 'king_bomb';
+        });
+        if (bombs.length > 0) {
+          // 根据 aiSkill 决定是否使用炸弹
+          if (aiSkill > 0.4) return { indices: bombs[0].indices, cards: getCardsByIndices(computerHand, bombs[0].indices) };
+          return null;
+        }
+        return null; // 无法压过，过牌
+      }
+      // 根据 aiSkill 在 beating 中选一个（更高技能更倾向于最佳）
+      const r = Math.random();
+      const pickIndex = Math.floor(Math.pow(r, aiSkill) * beating.length);
+      const chosen = beating[Math.max(0, Math.min(beating.length - 1, pickIndex))];
+      return { indices: chosen.indices, cards: getCardsByIndices(computerHand, chosen.indices) };
+    }
+
+    // 领先出牌（没有上一手需要压）：根据 aiSkill 从评分好的候选中选择
+    const r = Math.random();
+    const pickIndex = Math.floor(Math.pow(r, aiSkill) * scored.length);
+    const chosen = scored[Math.max(0, Math.min(scored.length - 1, pickIndex))];
+    return { indices: chosen.indices, cards: getCardsByIndices(computerHand, chosen.indices) };
+  };
+
   // 统一结算函数
   const finishGame = (winnerIndex) => {
     const isLandlordWin = landlord === winnerIndex;
@@ -1581,6 +1710,20 @@ export default function App() {
         console.warn('保存总分失败', e);
       }
     })();
+
+    // 根据胜负调整玩家技能估计（简单的在线学习）：玩家获胜则技能上升，失败则下降
+    setPlayerSkill(prev => {
+      const lr = 0.05; // 学习率
+      let next = prev;
+      if (winnerIndex === 0) {
+        next = prev + lr * (1 - prev);
+      } else {
+        next = prev - lr * prev;
+      }
+      if (next < 0.1) next = 0.1;
+      if (next > 0.9) next = 0.9;
+      return next;
+    });
 
     // 重置提示索引
     setHintIndex(0);
@@ -1754,127 +1897,68 @@ export default function App() {
         
         // 如果是第一家、上家过牌，或上一次出牌者正好是自己（可主动再出），则尝试出牌
         if (lastPlayer === -1 || lastPlayer === computerIndex || (lastPlayer !== computerIndex && lastPlayedCards.length > 0)) {
-          // 更智能的策略：根据上一手牌类型尝试匹配相同牌型，否则尝试最小单张或使用炸弹
-          let bestPlay = null;
-          const lastType = lastPlayedCards.length > 0 ? getCardType(lastPlayedCards).type : null;
+          // 使用新的决策函数选择出牌（可返回 null 表示过）
+          const move = chooseComputerMove(computerIndex, computerHand, lastPlayedCards, lastPlayer);
 
-          // 如果没有上一手，优先出最小单张
-          if (!lastType) {
-            if (computerHand.length > 0) {
-              bestPlay = { cards: [computerHand[0]], indices: [0] };
-            }
-          } else {
-            // 按照 lastType 尝试对应牌型
-            if (lastType === 'single') {
-              for (let i = 0; i < computerHand.length; i++) {
-                const cardToTry = [computerHand[i]];
-                if (canBeat(cardToTry, lastPlayedCards)) {
-                  bestPlay = { cards: cardToTry, indices: [i] };
-                  break;
-                }
+          if (!move) {
+            // 电脑过牌，检查是否所有其他玩家均过牌
+            setConsecutivePasses(prev => {
+              const next = prev + 1;
+              if (next >= 2) {
+                setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
+                setLastPlayedCards([]);
+                setCurrentPlayer(lastPlayer);
+                return 0;
+              } else {
+                setGameLog(g => [...g, `电脑${computerIndex}过牌`]);
+                setCurrentPlayer((currentPlayer + 1) % 3);
+                return next;
               }
-            } else if (lastType === 'pair') {
-              for (let i = 0; i < computerHand.length - 1; i++) {
-                for (let j = i + 1; j < computerHand.length; j++) {
-                  if (computerHand[i].value === computerHand[j].value) {
-                    const pair = [computerHand[i], computerHand[j]];
-                    if (canBeat(pair, lastPlayedCards)) {
-                      bestPlay = { cards: pair, indices: [i, j] };
-                      break;
-                    }
-                  }
-                }
-                if (bestPlay) break;
-              }
-            } else if (lastType === 'triple') {
-              for (let i = 0; i < computerHand.length - 2; i++) {
-                for (let j = i + 1; j < computerHand.length - 1; j++) {
-                  for (let k = j + 1; k < computerHand.length; k++) {
-                    if (computerHand[i].value === computerHand[j].value && computerHand[j].value === computerHand[k].value) {
-                      const triple = [computerHand[i], computerHand[j], computerHand[k]];
-                      if (canBeat(triple, lastPlayedCards)) {
-                        bestPlay = { cards: triple, indices: [i, j, k] };
-                        break;
-                      }
-                    }
-                  }
-                  if (bestPlay) break;
-                }
-                if (bestPlay) break;
-              }
-            }
-          }
-
-          // 如果仍未找到合适牌，尝试出炸弹（四张同点或王炸）以压制
-          if (!bestPlay) {
-            // 查找四张相同
-            const valueCounts = {};
-            computerHand.forEach((c, idx) => {
-              valueCounts[c.value] = valueCounts[c.value] || [];
-              valueCounts[c.value].push(idx);
             });
-            for (const v in valueCounts) {
-              if (valueCounts[v].length === 4) {
-                const indices = valueCounts[v];
-                const bombCards = indices.map(i => computerHand[i]);
-                if (canBeat(bombCards, lastPlayedCards)) {
-                  bestPlay = { cards: bombCards, indices };
-                  break;
-                }
-              }
-            }
-
-            // 查找王炸
-            if (!bestPlay) {
-              const jokerIndices = computerHand.reduce((acc, c, idx) => {
-                if (c.type === 'joker') acc.push(idx);
-                return acc;
-              }, []);
-              if (jokerIndices.length === 2) {
-                const kingBomb = jokerIndices.map(i => computerHand[i]);
-                if (canBeat(kingBomb, lastPlayedCards)) {
-                  bestPlay = { cards: kingBomb, indices: jokerIndices };
-                }
-              }
-            }
-
-            // 如果还是没有，而上家非过牌且必须接牌，则过牌
-            if (!bestPlay && lastPlayer !== -1) {
-              // 电脑过牌，检查是否所有其他玩家均过牌
-              setConsecutivePasses(prev => {
-                const next = prev + 1;
-                if (next >= 2) {
-                  setGameLog(g => [...g, `所有其他玩家均过牌，轮到 ${lastPlayer === 0 ? '您' : `电脑${lastPlayer}`} 任意出牌`]);
-                  setLastPlayedCards([]);
-                  setCurrentPlayer(lastPlayer);
-                  return 0;
-                } else {
-                  setGameLog(g => [...g, `电脑${computerIndex}过牌`]);
-                  setCurrentPlayer((currentPlayer + 1) % 3);
-                  return next;
-                }
-              });
-              return;
-            }
+            return;
           }
-          
-          // 如果找到合适的牌，则出牌
-            if (bestPlay) {
-            const newComputerHand = computerHand.filter((_, i) => !bestPlay.indices.includes(i));
-            
-            switch(computerIndex) {
-              case 1:
-                setComputer1Hand(newComputerHand);
-                break;
-              case 2:
-                setComputer2Hand(newComputerHand);
-                break;
-            }
-            
-            setLastPlayedCards(bestPlay.cards);
-            setLastPlayer(computerIndex);
-            setConsecutivePasses(0);
 
+          // 执行出牌
+          const chosenIndices = move.indices;
+          const chosenCards = move.cards;
+          const newComputerHand = computerHand.filter((_, i) => !chosenIndices.includes(i));
+
+          switch(computerIndex) {
+            case 1:
+              setComputer1Hand(newComputerHand);
+              break;
+            case 2:
+              setComputer2Hand(newComputerHand);
+              break;
+          }
+
+          setLastPlayedCards(chosenCards);
+          setLastPlayer(computerIndex);
+          setConsecutivePasses(0);
+
+          // 标记该电脑已出牌
+          setPlayedAny(prev => {
+            const next = [...prev];
+            next[computerIndex] = true;
+            return next;
+          });
+
+          // 如果该电脑是地主，记录地主出牌手数（按手计数）
+          if (computerIndex === landlord) {
+            setLandlordPlayCount(prev => prev + 1);
+          }
+
+          // 如果电脑出了炸弹，记录
+          const playedType = getCardType(chosenCards);
+          if (playedType.type === 'bomb' || playedType.type === 'king_bomb') {
+            setBombsCount(prev => prev + 1);
+          }
+
+          const cardNames = chosenCards.map(c => c.type === 'joker' ? c.realValue : c.value);
+          setGameLog(prev => [...prev, `电脑${computerIndex}出了: ${cardNames.join(', ')}`]);
+
+          // 检查电脑是否获胜
+          if (newComputerHand.length === 0) {
             // 标记该电脑已出牌
             setPlayedAny(prev => {
               const next = [...prev];
@@ -1882,43 +1966,20 @@ export default function App() {
               return next;
             });
 
-            // 如果该电脑是地主，记录地主出牌手数（按手计数）
-            if (computerIndex === landlord) {
-              setLandlordPlayCount(prev => prev + 1);
-            }
-
             // 如果电脑出了炸弹，记录
-            const playedType = getCardType(bestPlay.cards);
-            if (playedType.type === 'bomb' || playedType.type === 'king_bomb') {
+            const lastType = getCardType(chosenCards);
+            if (lastType.type === 'bomb' || lastType.type === 'king_bomb') {
               setBombsCount(prev => prev + 1);
             }
 
-            const cardNames = bestPlay.cards.map(c => c.type === 'joker' ? c.realValue : c.value);
-            setGameLog(prev => [...prev, `电脑${computerIndex}出了: ${cardNames.join(', ')}`]);
-
-            // 检查电脑是否获胜
-            if (newComputerHand.length === 0) {
-              // 标记该电脑已出牌
-              setPlayedAny(prev => {
-                const next = [...prev];
-                next[computerIndex] = true;
-                return next;
-              });
-
-              // 如果电脑出了炸弹，记录
-              const lastType = getCardType(bestPlay.cards);
-              if (lastType.type === 'bomb' || lastType.type === 'king_bomb') {
-                setBombsCount(prev => prev + 1);
-              }
-
-              finishGame(computerIndex);
-              return;
-            }
-
-            // 重置提示索引
-            setHintIndex(0);
-            setPossiblePlays([]);
+            finishGame(computerIndex);
+            return;
           }
+
+          // 重置提示索引
+          setHintIndex(0);
+          setPossiblePlays([]);
+        }
           } else {
           // 电脑过牌（未进入上面分支），也计入连续过牌
           setConsecutivePasses(prev => {
