@@ -1450,22 +1450,24 @@ export default function App() {
     // 解得：marginLeft <= (containerWidth - cardWidth) / (count - 1)
     const maxAllowedSpacing = (containerWidth - cardWidth) / (count - 1);
 
-    // 如果空间充足（间距为正），使用正间距以减少或取消重叠
-    if (maxAllowedSpacing >= cardWidth) {
-      // 空间非常充足，可完全不重叠，返回卡片宽度（下一个卡片的左偏移）
-      return Math.floor(cardWidth);
+    // 特殊处理：当牌数很多时，强制使用指定重叠比率，确保不启用水平滚动
+    if (count >= 20) {
+      const overlapPercentage = 0.72; // 20张及以上使用72%
+      return -Math.round(cardWidth * overlapPercentage);
+    }
+    if (count >= 17) {
+      const overlapPercentage = 0.68; // 17张时使用68%
+      return -Math.round(cardWidth * overlapPercentage);
     }
 
+    // 如果空间充足（间距为非负），使用允许的最大间距以减少重叠
     if (maxAllowedSpacing >= 0) {
-      // 空间有限，但仍可不重叠或微分隔，使用允许的最大间距（不会超过 cardWidth）
       return Math.floor(Math.min(maxAllowedSpacing, cardWidth));
     }
 
     // 空间不足，需要重叠。根据牌数动态调整重叠率：牌越多，重叠越大
     let overlapPercentage;
-    if (count >= 20) overlapPercentage = 0.72;
-    else if (count >= 17) overlapPercentage = 0.67;
-    else if (count >= 14) overlapPercentage = 0.5;
+    if (count >= 14) overlapPercentage = 0.5;
     else if (count >= 12) overlapPercentage = 0.35;
     else overlapPercentage = 0.15; // 较少时仅轻微重叠
 
@@ -2184,6 +2186,7 @@ export default function App() {
 
           <ScrollView
             horizontal
+            scrollEnabled={false}
             contentContainerStyle={styles.handScroll}
             showsHorizontalScrollIndicator={false}
           >
