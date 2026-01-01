@@ -738,6 +738,7 @@ export default function App() {
   const [showHowToPlay, setShowHowToPlay] = useState(false); // 游戏玩法说明
   const [showGameModeSelection, setShowGameModeSelection] = useState(false); // 游戏模式选择界面
   const [landlord, setLandlord] = useState(-1); // 地主 (-1: 未确定, 0,1,2: 地主)
+  const [landlordPlayCount, setLandlordPlayCount] = useState(0); // 地主已出牌手数（用于反春判定）
   const [highestBid, setHighestBid] = useState(0); // 最高叫分
   const [bidder, setBidder] = useState(-1); // 当前叫分者
   const [bids, setBids] = useState([-1, -1, -1]); // 每个玩家的叫分 [玩家, 电脑1, 电脑2]，-1表示未叫分
@@ -854,6 +855,7 @@ export default function App() {
       setComputerBiddingInProgress(false); // 重置电脑叫分进行中状态
       setGamePhase('bidding');
       setGameState('playing'); // 现在开始游戏，但处于叫地主阶段
+      setLandlordPlayCount(0);
     } else if (gameMode === 'classic') {
       // 经典模式：不叫地主，随机分配地主
       // 随机选择地主
@@ -882,6 +884,7 @@ export default function App() {
       setComputer2Hand(newComputer2Hand);
       setBottomCards([]);
       setLandlord(randomLandlord);
+      setLandlordPlayCount(0);
       setGamePhase('playing');
       setCurrentPlayer(randomLandlord); // 地主先出牌
       setGameState('playing');
@@ -896,6 +899,8 @@ export default function App() {
       setBids([-1, -1, -1]);
       setGamePhase('bidding');
       setGameState('playing');
+
+      setLandlordPlayCount(0);
 
       // 立即开始自动叫地主
       setTimeout(() => {
@@ -937,6 +942,7 @@ export default function App() {
       setGamePhase('playing');
       setCurrentPlayer(0); // 玩家先出牌
       setGameState('playing');
+      setLandlordPlayCount(0);
     } else {
       // 默认为标准模式
       setGameLog(['发牌完成，开始叫地主！']);
@@ -951,6 +957,7 @@ export default function App() {
       setComputerBiddingInProgress(false); // 重置电脑叫分进行中状态
       setGamePhase('bidding');
       setGameState('playing'); // 现在开始游戏，但处于叫地主阶段
+      setLandlordPlayCount(0);
     }
 
     // 重置提示索引
@@ -1535,11 +1542,10 @@ export default function App() {
       (landlord === 1 && !playedAny[0] && !playedAny[2]) ||
       (landlord === 2 && !playedAny[0] && !playedAny[1])
     );
-    // 反春天：农民获胜且地主没有出过牌
-    const isLandlordLocked = landlord !== -1 && !playedAny[landlord];
+    // 反春天（按您提供的规则）：农民获胜且地主仅出过一手牌
+    const isAntiSpring = !isLandlordWinner && landlord !== -1 && landlordPlayCount === 1;
 
     const isSpring = isLandlordWinner && isAllFarmersLocked;
-    const isAntiSpring = !isLandlordWinner && isLandlordLocked;
 
     if (isSpring || isAntiSpring) {
       multiplier *= 2; // 春天或反春天翻倍
@@ -1616,6 +1622,11 @@ export default function App() {
       next[0] = true;
       return next;
     });
+
+    // 如果当前玩家是地主，记录地主出牌手数（按“手”计数）
+    if (landlord === 0) {
+      setLandlordPlayCount(prev => prev + 1);
+    }
 
     // 如果是炸弹或王炸，记录炸弹次数���每次翻倍）
     if (cardType.type === 'bomb' || cardType.type === 'king_bomb') {
@@ -1871,6 +1882,11 @@ export default function App() {
               next[computerIndex] = true;
               return next;
             });
+
+            // 如果该电脑是地主，记录地主出牌手数（按手计数）
+            if (computerIndex === landlord) {
+              setLandlordPlayCount(prev => prev + 1);
+            }
 
             // 如果电脑出了炸弹，记录
             const playedType = getCardType(bestPlay.cards);
