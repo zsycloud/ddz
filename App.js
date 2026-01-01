@@ -1665,35 +1665,40 @@ export default function App() {
       Alert.alert('提示', '现在不是������������的回合');
       return;
     }
-
-    // 检查是否需要重新生成可能的出牌选项
-    // 如果上一手牌变化了，或者玩家手牌变化了，或者可能的出牌选项为空，则重新生成
-    if (possiblePlays.length === 0) {
-      // 重新生成所有可能的出牌选项
-      const newPossiblePlays = generatePossiblePlays(playerHand, lastPlayedCards);
-      setPossiblePlays(newPossiblePlays);
-      setHintIndex(0); // 重置索引
+    // 重新生成所有可能的出牌选项（使用局部变量以避免 setState 的异步问题）
+    let plays = possiblePlays;
+    if (!plays || plays.length === 0) {
+      plays = generatePossiblePlays(playerHand, lastPlayedCards);
+      setPossiblePlays(plays);
+      setHintIndex(0);
     }
 
-    if (possiblePlays.length === 0) {
+    if (!plays || plays.length === 0) {
       Alert.alert('提示', '没有可以出的牌');
       return;
     }
 
-    // 获取当前提示的出牌选项
-    const currentPlay = possiblePlays[hintIndex];
-    setSelectedCards(currentPlay);
+    // 按顺序显示每一种出牌方式，轮流完所有方式后再点一次收回所有选择
+    if (hintIndex < plays.length) {
+      const currentPlay = plays[hintIndex] || [];
+      setSelectedCards(currentPlay);
 
-    // 更新提示索引，循环显示
-    const nextIndex = (hintIndex + 1) % possiblePlays.length;
-    setHintIndex(nextIndex);
+      // 显示提示信息
+      const cardNames = currentPlay.map(i => {
+        const card = playerHand[i];
+        return card ? (card.type === 'joker' ? card.realValue : card.value) : '';
+      });
+      Alert.alert('提示', `第${hintIndex + 1}/${plays.length}种出牌方式: ${cardNames.join(', ')}`);
 
-    // 显示提示信息
-    const cardNames = currentPlay.map(i => {
-      const card = playerHand[i];
-      return card.type === 'joker' ? card.realValue : card.value;
-    });
-    Alert.alert('提示', `第${hintIndex + 1}/${possiblePlays.length}种出牌方式: ${cardNames.join(', ')}`);
+      // 递增索引，下一次显示下一种
+      setHintIndex(hintIndex + 1);
+    } else {
+      // 已经显示完所有出牌方式，收回所有牌并重置
+      setSelectedCards([]);
+      setHintIndex(0);
+      setPossiblePlays([]);
+      Alert.alert('提示', '已收回所有提示');
+    }
   };
 
   // 电脑玩���出牌
