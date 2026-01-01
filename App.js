@@ -1450,21 +1450,29 @@ export default function App() {
     // 解得：marginLeft <= (containerWidth - cardWidth) / (count - 1)
     const maxAllowedSpacing = (containerWidth - cardWidth) / (count - 1);
 
-    // 为了确保所有牌都可见，间距不能超过maxAllowedSpacing
-    // 为了保持紧凑，我们希望使用一定的重叠
-    // 根据牌数调整重叠度：17张牌时用67%，20张牌时用72%
-    const overlapPercentage = count >= 20 ? 0.72 : 0.67; // 20张及以上用72%，否则用67%
-    const desiredOverlap = -cardWidth * overlapPercentage;
-
-    // 如果空间充足，强制使用我们希望的重叠度
-    // 如果空间不足，使用计算出的间距以确保所有牌都可见
-    if (maxAllowedSpacing >= 0) {
-        // 空间充足，强制使用重叠
-        return Math.round(desiredOverlap);
-    } else {
-        // 空间不足，使用计算出的间距（确保所有牌可见）
-        return Math.round(maxAllowedSpacing);
+    // 如果空间充足（间距为正），使用正间距以减少或取消重叠
+    if (maxAllowedSpacing >= cardWidth) {
+      // 空间非常充足，可完全不重叠，返回卡片宽度（下一个卡片的左偏移）
+      return Math.floor(cardWidth);
     }
+
+    if (maxAllowedSpacing >= 0) {
+      // 空间有限，但仍可不重叠或微分隔，使用允许的最大间距（不会超过 cardWidth）
+      return Math.floor(Math.min(maxAllowedSpacing, cardWidth));
+    }
+
+    // 空间不足，需要重叠。根据牌数动态调整重叠率：牌越多，重叠越大
+    let overlapPercentage;
+    if (count >= 20) overlapPercentage = 0.72;
+    else if (count >= 17) overlapPercentage = 0.67;
+    else if (count >= 14) overlapPercentage = 0.5;
+    else if (count >= 12) overlapPercentage = 0.35;
+    else overlapPercentage = 0.15; // 较少时仅轻微重叠
+
+    const desiredOverlap = -Math.round(cardWidth * overlapPercentage);
+
+    // 确保不会超出最大允许的间距（maxAllowedSpacing 为负，表示允许的最大重叠）
+    return Math.round(Math.max(desiredOverlap, maxAllowedSpacing));
   };
 
   // 加载并保存 cardOrder 到本地存储
