@@ -1679,8 +1679,14 @@ export default function App() {
     }
 
     // 按顺序显示每一种出牌方式，轮流完所有方式后再点一次收回所有选择
-    if (hintIndex < plays.length) {
-      const currentPlay = plays[hintIndex] || [];
+    let localIndex = hintIndex;
+    // 如果刚刚生成了 plays，重置本地索引为 0（避免异步 setState 导致的旧索引问题）
+    if (!possiblePlays || possiblePlays.length === 0) {
+      localIndex = 0;
+    }
+
+    if (localIndex < plays.length) {
+      const currentPlay = plays[localIndex] || [];
       setSelectedCards(currentPlay);
 
       // 显示提示信息
@@ -1688,10 +1694,10 @@ export default function App() {
         const card = playerHand[i];
         return card ? (card.type === 'joker' ? card.realValue : card.value) : '';
       });
-      Alert.alert('提示', `第${hintIndex + 1}/${plays.length}种出牌方式: ${cardNames.join(', ')}`);
+      Alert.alert('提示', `第${localIndex + 1}/${plays.length}种出牌方式: ${cardNames.join(', ')}`);
 
       // 递增索引，下一次显示下一种
-      setHintIndex(hintIndex + 1);
+      setHintIndex(localIndex + 1);
     } else {
       // 已经显示完所有出牌方式，收回所有牌并重置
       setSelectedCards([]);
